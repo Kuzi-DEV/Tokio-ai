@@ -13,7 +13,8 @@ release to carry everything below and everything in 0.4.0.
   backtesting.py 0.6.6.
 - **`examples/check_your_backtest.ipynb`**, a Colab notebook: 19 SMA
   crossovers on 20 years of SPY, alone vs corrected, with costs, then
-  upload your own CSV.
+  upload your own CSV. Saved with its outputs, so GitHub's preview shows the
+  result without running anything.
 - **`tokio_ai.check_backtest(pnl, trials=...)`**: is a finished
   backtest's profit distinguishable from luck? Takes per-bar strategy
   returns (or every variant tried, as a dict / DataFrame) and tests for a
