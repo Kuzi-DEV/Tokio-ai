@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tokio-ai"
-version = "0.4.0"
-description = "An open-source financial research agent that runs every claim through honest statistical testing before trusting it."
+version = "0.5.0"
+description = "Is your backtest real? Tests a strategy for luck, serial dependence and selection bias, with measured false-positive rates. Works with vectorbt and backtesting.py."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "Jordan Ahern" }]
-keywords = ["llm-agent", "finance", "statistics", "algorithmic-trading", "hypothesis-testing"]
+keywords = ["backtesting", "vectorbt", "backtesting.py", "overfitting", "sharpe-ratio", "algorithmic-trading", "statistics", "hypothesis-testing", "quantitative-finance"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -26,6 +26,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
+    "numpy>=1.22",
     "openai>=1.50.0",
     "textual>=0.60.0",
 ]
@@ -39,6 +40,7 @@ Issues = "https://github.com/jordanahern2009-svg/Tokio-ai/issues"
 [project.scripts]
 tokio-ai = "tokio_ai.tui:main"
 tokio-ai-plain = "tokio_ai.cli:main"
+tokio-ai-backtest = "tokio_ai.backtest_cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]

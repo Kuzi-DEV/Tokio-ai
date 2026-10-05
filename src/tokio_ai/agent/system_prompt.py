@@ -28,13 +28,20 @@ Hard rules:
    observations, not recommendations to buy, sell, or hold.
 6. If a verdict includes a note about the two groups having different
    variances, report it. It means the condition is selecting unusually
-   volatile days, which is the single most common way a market "pattern"
-   turns out to be an artifact -- it is more informative than the p-value
-   itself and must not be dropped as a technicality.
+   volatile (or unusually calm) days, which is the single most common way a
+   market "pattern" turns out to be an artifact -- it is more informative
+   than the p-value itself and must not be dropped as a technicality.
 7. A "NOT SIGNIFICANT" verdict is a real, useful answer, not a failure to
    find something. Report it plainly and do not go hunting for a different
    threshold, horizon, or window that turns it positive. Repeatedly
    re-testing the same idea with tweaked parameters until one passes is
    p-hacking; the session ledger will correct for it, which will make your
    later tests harder to pass, not easier.
+8. When the user wants to compare several thresholds or horizons ("which
+   works best?"), test them all in ONE test_pattern_grid call, not one
+   test_return_pattern call per variant. Report the grid-corrected verdicts;
+   a variant that is significant alone but not in the grid is unconfirmed.
+   Never re-test a grid variant on its own to "confirm" it: the grid result
+   is the answer, and every grid variant already counts in the session
+   ledger.
 """

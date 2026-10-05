@@ -1,6 +1,119 @@
 # Changelog
 
-## 0.4.0 — 2026-09-24
+## 0.5.0 — unreleased
+
+0.4.0 was committed to git but never tagged or published to PyPI, so 0.5.0 is the first
+release to carry everything below and everything in 0.4.0.
+
+- **`check_backtest` takes the backtest object itself**: a vectorbt
+  `Portfolio` (a multi-column one is a grid of variants, corrected for each
+  other) or the stats from backtesting.py's `Backtest.run()`, or a dict of
+  them. Returns and per-bar positions are read from it (`tokio_ai.adapters`;
+  neither library is a dependency). Tested against vectorbt 1.1.1 and
+  backtesting.py 0.6.6.
+- **`examples/check_your_backtest.ipynb`**, a Colab notebook: 19 SMA
+  crossovers on 20 years of SPY, alone vs corrected, with costs, then
+  upload your own CSV.
+- **`tokio_ai.check_backtest(pnl, trials=...)`**: is a finished
+  backtest's profit distinguishable from luck? Takes per-bar strategy
+  returns (or every variant tried, as a dict / DataFrame) and tests for a
+  positive mean with a Bartlett HAC whose window adapts to the P&L's
+  persistence (Andrews 1991 plug-in, Kiefer-Vogelsang fixed-b critical
+  values), then corrects for the search: one-sided Romano-Wolf across the
+  variants passed, or Sidak for a bare `trials` count. Reports the plain
+  t-test's p-value alongside, a haircut Sharpe, and how many independent
+  trials the result could survive. Optional `benchmark=` (test the excess)
+  and `positions=` (sizes the window to the holding run). Worst false-positive
+  rate on 16 simulated no-edge P&L shapes: 8.0% (plain t-test 38.0%). On 20
+  years of ten real assets: overlapping 20-day trade logs 5.4% (t-test
+  30.5%), best of 50 placebo strategies 4.2% (t-test 83.5%).
+  `scripts/calibration_backtest.py` and `scripts/placebo_backtest_real.py`
+  reproduce it; docs/calibration.md has the account, including the two
+  windows that failed first.
+- **Costs and the breakeven cost.** `check_backtest(..., positions=,
+  costs=0.0005)` charges every position change (5 bps per unit traded here)
+  before testing, reports turnover and the annual cost drag, says so when
+  costs are what sink a result that was significant gross, and reports the
+  breakeven cost: the most you could pay per unit traded and still pass,
+  corrected for every trial.
+- **`tokio_ai.probability_of_overfitting(variants)`**: the probability of
+  backtest overfitting by combinatorially symmetric cross-validation
+  (Bailey, Borwein, López de Prado & Zhu 2017), over all 12,870 half-splits
+  of 16 blocks. Also reported automatically by `check_backtest` for any
+  grid of four or more variants, net of costs. On 20 years of SPY, 19 SMA
+  crossovers score 0.91: the in-sample winner is worse than a random pick
+  out of sample. Measured on noise grids (mean 0.50, but a falsely low
+  reading below 0.2 in 3-10%) and with a planted edge
+  (`scripts/calibration_pbo.py`). The paper's degradation-slope statistic
+  is deliberately omitted: complementary halves force it towards -1, and it
+  read -0.33 on an edge that never degraded.
+- **`tokio_ai.check_contracts(prices, outcomes, sizes=, fees=, groups=)`**:
+  an exact test for bets on binary contracts (prediction markets, binary
+  options, fixed-odds bets). Null: every bet wins with probability equal to
+  its breakeven (price plus fee); the p-value is exact (Poisson-binomial
+  recursion, over contracts won for integer sizes), with a saddlepoint
+  approximation only for books too large for that. Also reports whether
+  the book did significantly worse than fair, an exact upper bound on the
+  loss rate, and how many bets a perfect record would need. Worst
+  false-positive rate on 24 fairly priced books: 5.6% (t-test 54.4%,
+  `check_backtest` 16.2%). `scripts/calibration_contracts.py`.
+  `tokio-ai-backtest --contracts PRICE OUTCOME [--sizes] [--fees] [--groups]`
+  runs it on a CSV.
+- **Robustness margin on every `check_contracts` verdict**: how far the
+  true cost per contract could be from the prices and fees given before a
+  significant result (either tail) flips, with a warning under 1c. Found by
+  using the tool on a real book: a "significantly worse than fair" finding
+  (p = 0.0003) came from recording limit prices instead of fill prices, which
+  differed by about 1c. The margin on that wrong analysis was 0.91c.
+- **Early exits in `check_contracts`**: `exit_values=` takes what each
+  stopped-out (or otherwise closed) bet returned, net of fees. Works for any
+  exit rule. Tested against the no-exit win/lose null, which bounds every
+  exit rule in convex order: false-positive rate at most 3.0% on simulated
+  fair 15-minute markets with stops (`scripts/calibration_stops.py`). A
+  sharper two-point stop null was tried and dropped at 7-13%. CLI:
+  `--exits COLUMN`.
+- `check_backtest` warns when the P&L's skewness is below -2 (favourites,
+  sold options): estimated-variance tests over-fire there.
+- **`tokio-ai-backtest` command**: the same test on a CSV, no Python:
+  `tokio-ai-backtest pnl.csv --trials 40` (`--equity` for equity curves,
+  `--benchmark COL`, `--columns ...`). A numeric column with stray text
+  cells is refused rather than silently dropped, since dropping it would
+  also undercount the trials.
+- **numpy is now a required dependency.** `check_many` already needed it
+  and failed with an ImportError on a plain `pip install tokio-ai`.
+- `check_many`'s adjusted p-value can no longer come out a hair below the
+  variant's own p-value through Monte Carlo noise.
+- **`tokio_ai.check_many(returns, conditions, horizon=[...])`**: test a whole
+  grid of variants as one family, controlling the chance of even one false
+  discovery anywhere in it. Uses the correlation between variants
+  (Romano-Wolf step-down against the joint normal of their Hodrick
+  statistics), so near-duplicate variants aren't punished like unrelated
+  ones. It's never more conservative than Holm. On a 30-variant grid with no
+  edge, no correction flags something 42.5-46.0% of the time; `check_many`
+  3.5-4.0%, Holm 1.5-2.5%, with 30-100% more power than Holm on the
+  variant that separates them. `scripts/calibration_family.py` and
+  `scripts/placebo_family_real.py` reproduce it.
+- **Agent tool `test_pattern_grid`**: the chat agent tests every
+  threshold x horizon of a condition as one `check_many` family, and its
+  system prompt now requires one grid call instead of a series of single
+  tests when the question is "which works best". Every grid variant is
+  also recorded in the session ledger, so a variant that fails the grid
+  can't be re-tested alone as a fresh "first" test. The grid output always
+  states whether the rotation second opinion agrees; in a live run the
+  agent had claimed an agreement that the output didn't contain.
+- **Faster long-run covariance.** `bartlett_long_run_cov` now works in the
+  frequency domain (the Bartlett-weighted cross-covariance equals the
+  cross-spectrum weighted by the Fejér kernel): one FFT per series and one
+  matrix product, instead of an inverse FFT per pair. Tested equal to the
+  direct lag sum to 1e-12. A 30-variant grid takes roughly 0.3-0.5 s at
+  5,000 bars and 4-5 s at 100,000, depending on hardware.
+- **Agent system prompt:** the unequal-variance rule said the condition
+  selects "volatile" days, even when it selects calm ones (the same bug
+  fixed in the verdict text in 0.4.0).
+- **Refactor:** `rigor/overlap.py` exposes `hodrick_terms` and
+  `bartlett_long_run_cov`, shared by `check` and `check_many`.
+
+## 0.4.0 — 2026-09-24 (git only)
 
 - **`tokio_ai.check(returns, condition, horizon)`**: the calibrated
   engines as a plain library call on your own data (lists, numpy or
@@ -12,7 +125,7 @@
 - **`scripts/calibration_check.py`**: false-positive rates on fat tails,
   volatility regimes, a persistent momentum condition and autocorrelated
   returns, next to a Welch t-test. Worst case across 51 configurations:
-  TokIO 7.4% (default engine) and 7.0% (rotation), t-test 61.0%. See
+  TokIO 7.7% (default engine) and 7.0% (rotation), t-test 61.0%. See
   [docs/calibration.md](docs/calibration.md#check-on-harsher-nulls).
 - **Exact and fast with numpy.** The circular-shift test now evaluates
   every rotation at once through an FFT (a circular cross-correlation,
@@ -32,10 +145,23 @@
 - **`scripts/benchmark.py`**: head-to-head size and power against
   Newey-West (statsmodels) and a stationary block bootstrap (arch) on 51
   null configurations, including autocorrelated returns. Worst-case size:
-  TokIO 7.7%, Newey-West 15.0%, bootstrap 15.0%, t-test 64.0%, at equal
-  power (73.7% vs 74.2%). The default engine was chosen by this benchmark,
-  after a minimum-shift rotation variant and a Cauchy combination both
-  lost. docs/calibration.md has the full account.
+  TokIO 8.3% (a 60-path row; 7.7% where rows have ~200 paths), Newey-West
+  15.0%, bootstrap 15.0%, t-test 64.0%, at equal power (73.5% vs 74.2%).
+  The default engine was chosen by this benchmark, after a minimum-shift
+  rotation variant and a Cauchy combination both lost. docs/calibration.md
+  has the full account.
+- **`scripts/placebo_real.py`**: false-positive rates on real market data.
+  20,000 random signals, independent of prices by construction, tested on
+  20 years of daily bars for ten assets. Pooled worst: t-test 64.1%,
+  Newey-West 10.4%, TokIO 5.1%.
+- **HAC bandwidth covers the condition's time scale.** The placebo study
+  found the default engine at 11-12% on USO, whose returns trend over months.
+  The bandwidth is now max(Newey-West rule of thumb, mean run length of the
+  condition + h), which brought USO to ~6% with no measurable cost in the
+  simulations. The autocovariances are computed by FFT, so long bandwidths
+  stay fast.
+- **`.github/workflows/publish.yml`**: PyPI Trusted Publishing on version
+  tags, gated on the test suite and a tag/version match. No API token.
 - **Fixed: the agent was dead for every new user.** NVIDIA retired the
   default model (`llama-3.3-nemotron-super-49b-v1.5`) on 2026-08-26, and
   every request returned HTTP 410. The new default is

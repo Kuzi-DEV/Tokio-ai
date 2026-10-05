@@ -27,13 +27,19 @@ size where Newey-West and Hansen-Hodrick do not).
 Real bar returns are not exactly a martingale difference: bid-ask bounce
 makes intraday returns negatively autocorrelated, and trend makes them
 positively autocorrelated. Plain 1B then leaks (measured: 10% at h=20 with
-AR(1) = +0.15 returns). So the variance adds a Bartlett-kernel HAC over u_t
-with a SHORT bandwidth -- the Newey-West rule of thumb 4(n/100)^(2/9), about
-5 at a thousand bars. Short is enough, because the long-range structure is
-already exact in B_t; the kernel only has to cover the return series' own
-short memory. That combination held a 7.7% worst case across 51 null
-configurations, including autocorrelated returns, where Newey-West reached
-15%. See docs/calibration.md.
+AR(1) = +0.15 returns). So the variance adds a Bartlett-kernel HAC over u_t.
+
+The bandwidth is the larger of the Newey-West rule of thumb, 4(n/100)^(2/9)
+(about 6 at a thousand bars), and the condition's mean run length plus h.
+The rule of thumb covers the returns' own short memory. The run-length term
+exists because of real data: on 20 years of USO, whose returns trend over
+months (variance ratio 1.6 at 120 days), a random condition that persists
+for ~120 bars lined up with those trends by chance, and the rule-of-thumb
+bandwidth alone fired 11-12% of the time (two runs). Covering the condition's own time
+scale brought that to 6%, and cost essentially no power in the simulation
+benchmark. The bandwidth depends only on the condition's persistence,
+never on how it relates to the returns, so it cannot be tuned toward a
+result. See docs/calibration.md.
 
 Pure Python, with an optional numpy path for large n. Both are tested
 against each other.
@@ -56,6 +62,19 @@ class OverlapResult:
 def default_bandwidth(n: int) -> int:
     """Newey & West (1994) rule of thumb, floor(4 * (n/100)^(2/9))."""
     return int(math.floor(4 * (max(n, 1) / 100) ** (2 / 9)))
+
+
+def mean_run_length(flags: list[bool]) -> int:
+    """Average length of the condition's runs of identical values."""
+    if not flags:
+        return 1
+    runs = 1 + sum(1 for a, b in zip(flags, flags[1:]) if a != b)
+    return max(1, round(len(flags) / runs))
+
+
+def hac_bandwidth(n_bars: int, flags: list[bool], horizon: int) -> int:
+    """max(rule of thumb, mean run length of the condition + horizon)."""
+    return max(default_bandwidth(n_bars), mean_run_length(flags) + horizon)
 
 
 def _two_sided_normal_p(z: float) -> float:
@@ -137,7 +156,9 @@ def _hodrick_python(bar_returns, labels, horizon, bandwidth) -> OverlapResult:
     u = [((r[t] - rbar) * B[t]) if present[t] else 0.0 for t in range(n)]
     S = sum(u)
 
-    L = default_bandwidth(n_present) if bandwidth is None else bandwidth
+    flags = [bool(labels[i]) for i in range(n) if valid[i]]
+    L = hac_bandwidth(n_present, flags, horizon) if bandwidth is None else bandwidth
+    L = min(L, n - 1)
     V = sum(x * x for x in u)
     for k in range(1, L + 1):
         w = 1 - k / (L + 1)
@@ -148,12 +169,18 @@ def _hodrick_python(bar_returns, labels, horizon, bandwidth) -> OverlapResult:
     return OverlapResult(z, _two_sided_normal_p(z), L, n)
 
 
-def _hodrick_numpy(np, bar_returns, labels, horizon, bandwidth) -> OverlapResult:
+def hodrick_terms(np, bar_returns, labels, horizon):
+    """The one-bar terms u_t = (r_t - rbar) * B_t, plus the default bandwidth.
+
+    Shared by `hodrick_test` and `tokio_ai.check_many`, which needs every
+    variant's terms to estimate how the variants' statistics covary. Returns
+    None when no label is usable, or when the inputs don't convert to floats.
+    """
     try:
         raw = np.asarray(bar_returns, dtype=float)
         lab = np.asarray(labels, dtype=float)
     except (TypeError, ValueError):
-        return _hodrick_python(bar_returns, labels, horizon, bandwidth)
+        return None
     n = len(raw)
     present = ~np.isnan(raw)
     raw = np.where(present, raw, 0.0)
@@ -166,7 +193,7 @@ def _hodrick_numpy(np, bar_returns, labels, horizon, bandwidth) -> OverlapResult
         i = np.arange(n - horizon)
         valid[i] = ~np.isnan(lab[i]) & (gaps[i + 1 + horizon] - gaps[i + 1] == 0)
     if not valid.any():
-        return OverlapResult(0.0, 1.0, 0, n)
+        return None
     flag = np.where(np.isnan(lab), 0.0, (lab != 0).astype(float))
     abar = flag[valid].mean()
     a = np.where(valid, flag - abar, 0.0)
@@ -178,12 +205,63 @@ def _hodrick_numpy(np, bar_returns, labels, horizon, bandwidth) -> OverlapResult
     n_present = int(present.sum())
     rbar = r[present].sum() / n_present if n_present else 0.0
     u = np.where(present, (r - rbar) * B, 0.0)
-    S = float(u.sum())
 
-    L = default_bandwidth(n_present) if bandwidth is None else bandwidth
-    V = float(u @ u)
-    for k in range(1, L + 1):
-        V += 2 * (1 - k / (L + 1)) * float(u[k:] @ u[:-k])
+    f = flag[valid]
+    runs = 1 + int(np.count_nonzero(f[1:] != f[:-1]))
+    L = max(default_bandwidth(n_present), max(1, round(len(f) / runs)) + horizon)
+    return u, L
+
+
+def bartlett_long_run_cov(np, U, L):
+    """Bartlett-weighted long-run covariance of the rows of U (k x n).
+
+    Entry (j, k) is sum over lags l in [-L, L] of (1 - |l|/(L+1)) * sum_t
+    U[j, t+l] * U[k, t]. The Bartlett kernel keeps the matrix positive
+    semi-definite.
+
+    Computed in the frequency domain: a kernel-weighted sum of
+    cross-covariances equals the cross-spectrum weighted by the kernel's
+    Fourier transform (Parseval). So the whole k x k matrix is one FFT per
+    row plus one matrix product over the frequency bins, instead of an
+    inverse FFT for every pair of rows. The zero-padding to at least 2n-1
+    keeps the lags linear rather than circular.
+    """
+    k, n = U.shape
+    L = min(L, n - 1)
+    size = 1 << (2 * n - 1).bit_length()
+    F = np.fft.rfft(U, size, axis=1)
+    w = np.zeros(size)
+    w[0] = 1.0
+    if L:
+        lags = np.arange(1, L + 1)
+        w[lags] = 1 - lags / (L + 1)
+        w[size - lags] = w[lags]
+    W = np.fft.rfft(w).real  # real: the weight sequence is symmetric
+    # rfft keeps half the spectrum: every bin except DC and Nyquist stands
+    # for itself and its mirror image, so it counts twice.
+    mult = np.full(W.shape, 2.0)
+    mult[0] = 1.0
+    mult[-1] = 1.0
+    G = F * (W * mult / size)
+    return (G @ F.conj().T).real
+
+
+def _hodrick_numpy(np, bar_returns, labels, horizon, bandwidth) -> OverlapResult:
+    terms = hodrick_terms(np, bar_returns, labels, horizon)
+    n = len(bar_returns)
+    if terms is None:
+        try:
+            np.asarray(bar_returns, dtype=float)
+            np.asarray(labels, dtype=float)
+        except (TypeError, ValueError):
+            return _hodrick_python(bar_returns, labels, horizon, bandwidth)
+        return OverlapResult(0.0, 1.0, 0, n)
+    u, L = terms
+    S = float(u.sum())
+    if bandwidth is not None:
+        L = bandwidth
+    L = min(L, n - 1)
+    V = float(bartlett_long_run_cov(np, u[None, :], L)[0, 0])
     if V <= 0:
         return OverlapResult(0.0, 1.0, L, n)
     z = S / math.sqrt(V)

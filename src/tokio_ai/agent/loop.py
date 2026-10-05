@@ -18,6 +18,7 @@ from openai import OpenAI
 from ..rigor.ledger import TestLedger
 from ..tools.filings import recent_filings
 from ..tools.hypothesis import test_hypothesis as _test_hypothesis
+from ..tools.patterns import test_pattern_grid as _test_pattern_grid
 from ..tools.patterns import test_return_pattern as _test_return_pattern
 from ..tools.prices import fetch_daily_bars
 from ..tools.screener import top_performers as _top_performers
@@ -117,6 +118,16 @@ class Agent:
                         period=tool_input.get("period", "3mo"),
                         top_n=tool_input.get("top_n", 10),
                     )
+                )
+            if name == "test_pattern_grid":
+                return _test_pattern_grid(
+                    self.ledger,
+                    tool_input["symbol"],
+                    tool_input["feature"],
+                    tool_input["op"],
+                    tool_input["thresholds"],
+                    tool_input["horizons"],
+                    tool_input.get("range", "10y"),
                 )
             if name == "test_return_pattern":
                 return _test_return_pattern(

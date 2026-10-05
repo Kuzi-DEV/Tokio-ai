@@ -71,3 +71,37 @@ def test_invalid_op_raises():
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+
+def _random_bars(n, seed):
+    import random
+
+    rng = random.Random(seed)
+    price, bars = 100.0, []
+    for i in range(n):
+        prev, price = price, price * (1 + rng.gauss(0, 0.012))
+        bars.append(_bar(f"d{i:05d}", prev, price))
+    return bars
+
+
+def test_grid_variants_count_in_the_session_ledger(monkeypatch):
+    # The loophole this closes: run a grid, see a variant fail the grid
+    # correction, then re-test it alone as the session's "first" test. Every
+    # grid variant must already be in the ledger, so the single test is
+    # corrected for all of them.
+    import pytest
+
+    pytest.importorskip("numpy")
+    import tokio_ai.tools.patterns as patterns
+    from tokio_ai.rigor.ledger import TestLedger
+
+    bars = _random_bars(1500, 1)
+    monkeypatch.setattr(patterns, "fetch_daily_bars", lambda symbol, range_: bars)
+    ledger = TestLedger()
+    out = patterns.test_pattern_grid(ledger, "FAKE", "daily_return", "<",
+                                     [-0.01, -0.02], [1, 5, 20])
+    assert "6 variants tested as one family" in out
+    assert len(ledger.tests) == 6
+    patterns.test_return_pattern(ledger, "FAKE", "daily_return", "<", -0.01, 5)
+    assert len(ledger.tests) == 7
+    assert "correcting for 7 hypothesis test(s)" in ledger.verdict("FAKE_daily_return_<-0.01_5d")

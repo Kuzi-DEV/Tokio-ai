@@ -6,16 +6,45 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](pyproject.toml)
 [![calibrated](https://img.shields.io/badge/false%20positive%20rate-measured-brightgreen.svg)](docs/calibration.md)
 
-An open-source financial research agent that treats "the data supports this"
-as a claim to be tested, not a vibe to be trusted.
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jordanahern2009-svg/Tokio-ai/blob/main/examples/check_your_backtest.ipynb)
 
-Give it a ticker, a filing, or a plain-English trading hypothesis. It pulls
-real data (price history, SEC filings) and, before it will tell you a
-pattern is real, it runs the comparison through a permutation test, checks
-the sample size against a hard floor, and corrects for every other
-hypothesis you've asked it to test in the same conversation. Most AI
-stock-chat tools will confidently describe a pattern in a handful of data
-points. This one is built to tell you when it can't.
+**Is your backtest real?** TokIO tells you whether a strategy's profit is
+distinguishable from luck, once you allow for the two things a Sharpe ratio
+hides: P&L that isn't independent from bar to bar, and the other variants
+you tried before this one. Every test it runs has a measured false-positive
+rate, published and reproducible.
+
+```bash
+pip install tokio-ai
+```
+
+```python
+import tokio_ai
+
+print(tokio_ai.check_backtest(pf))      # a vectorbt Portfolio, a whole parameter grid included
+print(tokio_ai.check_backtest(stats))   # what backtesting.py's Backtest(...).run() returns
+print(tokio_ai.check_backtest(pnl, trials=40))  # or plain per-bar returns, from anywhere
+```
+
+Nineteen SMA crossovers on 20 years of SPY. The best one, tested alone:
+**p = 0.038.** The same backtest with the other eighteen it was picked from:
+
+```
+NOT SIGNIFICANT after correcting for 19 trials (Romano-Wolf, using their
+correlation) (p=0.1176, alpha=0.05). Strongest variant: sma10/100.
+Haircut Sharpe after 19 trials: 0.21.
+Probability of backtest overfitting (CSCV, 12870 splits): 0.90. Picking by
+backtest did worse than picking at random: the in-sample winner finished at
+or below the median out of sample in 90% of splits.
+```
+
+**[Run it yourself in Colab, then upload your own backtest →](https://colab.research.google.com/github/jordanahern2009-svg/Tokio-ai/blob/main/examples/check_your_backtest.ipynb)**
+No API key, no account. There's also a CLI for a CSV export:
+`tokio-ai-backtest pnl.csv --trials 40`.
+
+TokIO also ships an LLM research agent (price history, SEC filings, plain-English
+hypotheses) that routes every claim through the same tests;
+[see below](#quickstart).
 
 ## We tested the tests, and they failed
 
@@ -53,7 +82,7 @@ no API key or network needed:
 python scripts/calibration_study.py
 ```
 
-## Check your own backtest
+## Test a condition on your own data
 
 No agent, no API key, no network. You bring returns and a condition you
 think predicts them; `check()` tells you whether that's distinguishable
@@ -121,13 +150,271 @@ markets with no edge (size) and with a planted one (power):
 | Welch t-test | 64.0% | 74.0% |
 | Newey-West (HAC, lags = h) | 15.0% | 74.2% |
 | stationary bootstrap (`arch`) | 15.0% | 74.3% |
-| **TokIO `check()`** | **7.7%** | 73.7% |
+| **TokIO `check()`** | **8.3%** | 73.5% |
 
-Same power as Newey-West, within half a point, at half its worst-case
+Same power as Newey-West, within a point, at about half its worst-case
 false-positive rate. The default engine was picked by that benchmark,
-after two other designs lost. [The full head-to-head, what we tried, and
+after two other designs lost.
+
+**And on real markets, not just simulated ones:** on 20 years of daily
+data for ten assets (equity indices, single stocks, bonds, gold, oil, FX),
+20,000 random signals that by construction predict nothing were flagged
+by a t-test up to 64% of the time, by Newey-West up to 10%, and by
+`check()` at most 5.1%. [Real-data placebo study
+→](docs/calibration.md#real-market-data-placebo-signals-on-20-years-of-ten-assets) [The full head-to-head, what we tried, and
 where each engine is weaker
 →](docs/calibration.md#head-to-head-tokio-vs-newey-west-vs-the-stationary-bootstrap)
+
+## Check a whole grid without fooling yourself
+
+The most common way to fool yourself isn't testing one idea badly. It's
+testing thirty variants (lookback 5, 20 or 60; threshold 1%, 2% or 3%;
+horizon 1, 5 or 20) and reporting the one that worked. On markets with **no
+edge at all**, a 30-variant grid produces at least one p < 0.05 about
+**45% of the time**.
+
+```python
+grid = {f"mom{L}": (prices > prices.shift(L)).where(prices.shift(L).notna())
+        for L in (5, 10, 20, 60, 120, 250)}
+grid.update({f"drop{int(x * 100)}%": r < -x for x in (0.01, 0.02, 0.03)})
+print(tokio_ai.check_many(r, grid, horizon=[1, 5, 20]))
+```
+
+That exact grid on 20 years of real SPY data, run 2026-09-25 (2006-09-25
+to 2026-09-25; the numbers move slightly as new days arrive):
+
+```
+27 variants tested as one family (alpha=0.05, family-wise). 0 survive the
+correction; 2 would have looked significant alone.
+
+variant        h        gap   p alone    p grid  verdict
+mom5 @h5       5    -0.332%    0.0109    0.1350  not significant
+drop1% @h1     1    +0.148%    0.0490    0.4187  not significant
+drop2% @h1     1    +0.313%    0.0586    0.4533  not significant
+...
+```
+
+Five-day momentum followed by a five-day reversal, p = 0.011 on its own,
+is a textbook short-term-reversal "edge". Found as the best of 27 tries,
+it's p = 0.135. Holm would have said about 0.29; `check_many` is half as
+harsh because it knows the variants overlap, and still doesn't let the
+search fool you.
+
+`check_many` tests every variant at every horizon as one family and reports
+which ones survive the search. The chance of even one false discovery
+anywhere in the grid stays at 5%. Bonferroni and Holm do that too, but they
+treat 30 near-copies of one idea as 30 unrelated ideas, and throw away real
+edges. `check_many` measures how correlated the variants are, the same
+overlap-exact way `check()` works, and uses it (Romano-Wolf step-down):
+
+| on markets with no edge | any variant flagged |
+|---|---:|
+| no correction | 42.5-46.0% |
+| Bonferroni / Holm | 1.5-2.5% |
+| **`check_many`** | **3.5-4.0%** |
+
+And with a real edge planted in one rare-event variant, `check_many` finds
+it 30-100% more often than Holm, at the same error guarantee. On real
+market data (2,000 random 45-variant grids on 20 years of ten assets),
+no correction flagged something in 40.2% of grids, Holm in 0.5%, and
+`check_many` in 2.6%. [Full grid study
+→](docs/calibration.md#grids-check_many-and-the-cost-of-searching)
+
+## Check a finished backtest
+
+Most people don't arrive with a condition. They arrive with a column of
+daily strategy returns and a Sharpe ratio they like. `check_backtest` asks
+whether that profit is distinguishable from luck, once two things are
+allowed for: the P&L's serial dependence, and the variants you tried before
+this one.
+
+```python
+import tokio_ai
+
+print(tokio_ai.check_backtest(pnl, trials=40))            # you tried 40 things
+print(tokio_ai.check_backtest({"sma10/100": pnl_a, ...}))  # or pass them all
+```
+
+From vectorbt or backtesting.py, pass the object itself. Returns and the
+position over each bar are read from it, and a multi-column vectorbt
+Portfolio counts every column as a variant you tried:
+
+```python
+fast, slow = vbt.MA.run_combs(close, window=[5, 10, 20, 50], r=2)
+pf = vbt.Portfolio.from_signals(close, fast.ma_crossed_above(slow), fast.ma_crossed_below(slow), fees=0.0005)
+print(tokio_ai.check_backtest(pf))                     # all 6 pairs, corrected for each other
+
+stats = Backtest(data, SmaCross, commission=0.001).run()
+print(tokio_ai.check_backtest(stats))
+```
+
+That vectorbt grid is long-only, and on 20 years of SPY four of the six pairs
+come out significant. Read the note under the verdict: they were long about
+65% of the time in a market that rose, and against a zero-profit null that
+drift is enough. Pass `benchmark=` buy-and-hold scaled to their average
+exposure and every one of them fails. That's the question you usually mean.
+
+Or without writing any Python, on a CSV exported from wherever you
+backtest (one column per variant; a date column is skipped):
+
+```bash
+tokio-ai-backtest pnl.csv --trials 40
+```
+
+Nineteen SMA crossovers (fast 5/10/20/50, slow 50-250, long/short) on 20
+years of real SPY, run 2026-09-29. The best of them, alone:
+
+```
+SIGNIFICANT (p=0.0379, alpha=0.05).
+Sharpe 0.36 annualized over 4779 bars (~19.0 years at 252/year). A plain
+t-test would say p=0.0577; allowing for serial dependence in the P&L,
+p=0.0379 before any correction for trials.
+It would pass as the best of at most 1 independent trial. If you tried
+more than that, it's not evidence.
+The P&L's lag-1 autocorrelation is -0.10: a test that treats bars as
+independent overstates the uncertainty. This one doesn't.
+```
+
+(Yes, here the honest test is *less* strict than the t-test: SPY's daily
+returns mean-revert slightly, and that makes a long-horizon average steadier
+than independent bars would. The correction for dependence runs both ways.
+The positions were passed as `positions=`, which sizes the window to the
+~250-bar holding runs.)
+
+All nineteen passed together, as they were actually found (run
+2026-09-30, so the window has moved one day):
+
+```
+NOT SIGNIFICANT after correcting for 19 trials (Romano-Wolf, using their
+correlation) (p=0.1181, alpha=0.05). Strongest variant: sma10/100.
+Haircut Sharpe after 19 trials: 0.21.
+
+No costs charged; sma10/100 turns over 6.1x a year.
+Probability of backtest overfitting (CSCV, 12870 splits): 0.91. Picking by
+backtest did worse than picking at random: the in-sample winner finished at
+or below the median out of sample in 91% of splits.
+The in-sample winner's median Sharpe: 0.48 in sample, 0.20 out of sample.
+```
+
+That last part is the one to sit with. Cut the 19 years into 16 blocks and
+pick the best crossover on any half of them: on the other half, it lands in
+the bottom half of the nineteen 91% of the time. The backtest isn't telling
+you which crossover is good.
+
+What it reports that a Sharpe ratio doesn't:
+
+- **An honest p-value for the mean.** The variance comes from a HAC
+  estimator whose window adapts to how persistent the P&L is (Andrews'
+  plug-in, with Kiefer-Vogelsang fixed-b critical values for long windows
+  on short samples), so listing overlapping 20-day trade returns daily,
+  or holding positions for months, can't pass as independent evidence.
+- **The correction for your search.** Pass every variant and it uses how
+  correlated they are (one-sided Romano-Wolf step-down), so 19 near-copies
+  of one idea are charged less than 19 unrelated ideas. Pass only a count
+  and it applies Šidák's worst case.
+- **A haircut Sharpe** (the Sharpe your result is worth after the search),
+  and **how many trials it could survive**: the number to compare against
+  how many you really ran.
+- **Costs and the breakeven cost.** Pass `positions=` and `costs=` (0.0005
+  = 5 bps per unit traded) and the P&L is charged for every position
+  change. With positions, it also reports the most you could pay per unit
+  traded and still have a significant result, corrected for the search.
+  Run alone, sma10/100 above breaks even at 9.7 bps and turns over 6.4x a
+  year.
+- **The probability of backtest overfitting** for any grid of four or more
+  variants (`tokio_ai.probability_of_overfitting` on its own): does the
+  variant that wins on part of the history keep winning on the rest?
+  Bailey, Borwein, López de Prado & Zhu's combinatorially symmetric
+  cross-validation, over all 12,870 half-splits of 16 blocks.
+
+On P&L with no edge at all:
+
+| | plain t-test | `check_backtest` |
+|---|---:|---:|
+| one strategy, worst of 16 simulated P&L shapes | 38.0% | **8.0%** |
+| overlapping 20-day trades, 20y of 10 real assets | 30.5% | **5.4%** |
+| best of 50 strategies, 20y of 10 real assets | 83.5% | **4.2%** |
+| best of 100 strategies, simulated | 99.0% | **6.0%** |
+
+PBO isn't a test, so it has no false-positive rate. On 50-variant grids of
+pure noise it averages 0.50, as it should, but reads a falsely reassuring
+"below 0.2" in 3-10% of them. With a real Sharpe of 1.0 in one of the 50, it
+averages 0.11-0.26, and that variant is the one picked most often in 82-98%
+of grids.
+
+[Full study, including what broke on the way →](docs/calibration.md#finished-backtests-check_backtest)
+
+## Bets on binary contracts: `check_contracts`
+
+Prediction markets, binary options, bets at known odds. Each bet pays 1 or
+0 and you know what you paid, and that makes an exact test possible:
+
+```python
+tokio_ai.check_contracts(prices, won, sizes=contracts, fees=0.003)
+```
+
+```bash
+tokio-ai-backtest trades.csv --contracts price won --sizes count --fees 0.003
+```
+
+It matters most for favourites. Buy at 98c and you win 2c forty-nine times
+for every 98c loss. A short record with no loss yet looks like a steady
+stream of wins with almost no variance, and every test that estimates the
+variance from the P&L calls it significant. On contracts priced exactly
+fairly (no edge at all):
+
+| book | plain t-test | `check_backtest` | `check_contracts` |
+|---|---:|---:|---:|
+| 98c favourites, 30 bets | 54.4% | n/a | 0.0% |
+| 98c favourites, 300 bets | 16.6% | 16.2% | 2.2% |
+| 95c favourites, 100 bets | 13.7% | 12.8% | 4.4% |
+| 85-99c, sizes 1-50, 100 bets | 10.9% | 10.5% | 5.1% |
+| worst of 24 rows | 54.4% | 16.2% | **5.6%** |
+
+Nothing is estimated. The null is that each contract wins with
+probability exactly equal to its breakeven (price plus fees), so the P&L's
+distribution is known, and the p-value is computed exactly (a
+Poisson-binomial recursion over contracts won). It also reports the other
+tail, whether the book did significantly *worse* than fair, which is how
+you find out that your entries are overpaying. And it reports an exact
+upper bound on your true loss rate next to the breakeven one. At 98c,
+even a perfect 30-for-30 record happens 55% of the time with no edge; the
+output tells you how many bets a perfect record would need (149).
+
+**Every verdict says how fragile it is.** A significant result comes with
+the cost error that would flip it: "the edge disappears if the true cost per
+contract is 0.6c higher than the prices and fees given". Under 1c, the
+output warns that a bookkeeping error (limit price recorded instead of fill,
+fee rounding, a price in the other side's terms) could explain it. That
+warning exists because it happened to us: a p = 0.0003 "worse than fair"
+result on a real book came from limit prices that were about 1c above the
+fills. Its margin was 0.91c.
+
+**Stop-losses and other early exits.** Pass what each early exit returned,
+net of fees, and `None` for bets held to the end:
+
+```python
+tokio_ai.check_contracts(prices, won, fees=0.003, exit_values=exits)
+```
+
+```bash
+tokio-ai-backtest trades.csv --contracts price won --exits exit_net
+```
+
+Any exit rule works: fixed stops, trailing stops, take-profits, momentum
+reversals. If the market is fair, a position's price is a martingale, so
+whatever the rule, the position is worth its breakeven on average and ends
+somewhere between 0 and 1. The plain win/lose bet is the most spread-out way
+to do that, which makes it a conservative reference. On simulated fair
+15-minute markets with stops checked every minute or every second, the
+false-positive rate stayed at or below 3.0%. A real 2c edge was still found
+28-29% of the time over 500 stopped bets (36.5% without stops). A sharper
+null (a stop at L ends at exactly L or 1) was tried first and fired 7-13%,
+because real stops fill below their level and prices jump through them near
+expiry.
+
+`check_backtest` now warns when a P&L is shaped like this (skewness below
+−2) and points here.
 
 ## Why this exists
 
@@ -155,8 +442,12 @@ actually holds -- and reports where it didn't.
 - Test whether a simple technical condition (a big daily move, a gap at the
   open, unusual volume) actually predicts what happens next -- fetches,
   buckets, and runs the test in one call, not via the model eyeballing
-  raw numbers -- using a circular-shift randomization that accounts for
-  overlapping forward windows
+  raw numbers -- using Hodrick standard errors that handle overlapping
+  forward windows exactly, with a circular-shift randomization test as a
+  second opinion
+- Compare a whole grid of thresholds and horizons in one call ("which drop
+  size works best?"), corrected for having searched the grid, so the agent
+  can't p-hack by testing variants one at a time and reporting the winner
 - Run a two-sided permutation test comparing any two groups of numbers you
   already have -- studentized, so it stays honest when one group is much
   noisier than the other -- with automatic multiple-testing correction

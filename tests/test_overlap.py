@@ -86,3 +86,67 @@ def test_null_rejection_rate_is_near_nominal():
         r, lab = _series(400, 1000 + seed)
         hits += hodrick_test(r, lab, 5).p_value <= 0.05
     assert 2 <= hits <= 20  # 1%-10% of 200
+
+
+def test_bandwidth_covers_the_conditions_own_time_scale():
+    from tokio_ai.rigor.overlap import hac_bandwidth, mean_run_length
+
+    assert mean_run_length([True] * 10 + [False] * 10) == 10
+    assert mean_run_length([True, False] * 10) == 1
+    # Short runs: the Newey-West rule of thumb wins.
+    assert hac_bandwidth(1000, [True, False] * 500, 1) == default_bandwidth(1000)
+    # Long runs: run length + horizon wins.
+    assert hac_bandwidth(1000, [True] * 100 + [False] * 100, 5) == 105
+
+
+def test_slow_mean_drift_does_not_fool_a_persistent_placebo():
+    # The USO failure, reproduced: returns whose MEAN wanders over months,
+    # and a random condition that persists about as long. With only the
+    # rule-of-thumb bandwidth this fired well above 5%.
+    np = pytest.importorskip("numpy")
+    hits = hits_rule = 0
+    trials = 150
+    for seed in range(trials):
+        rng = np.random.default_rng(seed)
+        n = 2500
+        drift = np.zeros(n)
+        level = 0.0
+        for t in range(n):
+            if rng.random() < 1 / 150:
+                level = rng.normal(0, 0.003)
+            drift[t] = level
+        r = list(drift + rng.normal(0, 0.02, n))
+        state, lab = bool(rng.random() < 0.5), []
+        for _ in range(n):
+            if rng.random() < 1 / 120:
+                state = not state
+            lab.append(state)
+        hits += hodrick_test(r, lab, 20).p_value <= 0.05
+        hits_rule += hodrick_test(r, lab, 20, bandwidth=default_bandwidth(n)).p_value <= 0.05
+    assert hits / trials <= 0.10
+    assert hits < hits_rule
+
+
+@pytest.mark.parametrize("n,k,L", [(50, 3, 0), (50, 3, 7), (301, 5, 40), (64, 2, 63), (64, 2, 500)])
+def test_long_run_cov_matches_the_direct_lag_sum(n, k, L):
+    # The frequency-domain shortcut must equal the definition exactly,
+    # including zero lags, every lag, and a bandwidth past the series end.
+    np = pytest.importorskip("numpy")
+    from tokio_ai.rigor.overlap import bartlett_long_run_cov
+
+    rng = np.random.default_rng(n + k + L)
+    U = rng.normal(size=(k, n))
+    U[1] += np.roll(U[0], 3)  # cross-dependence at a nonzero lag
+    Lc = min(L, n - 1)
+    ref = np.zeros((k, k))
+    for lag in range(-Lc, Lc + 1):
+        w = 1 - abs(lag) / (Lc + 1)
+        for j in range(k):
+            for q in range(k):
+                if lag >= 0:
+                    ref[j, q] += w * (U[j, lag:] @ U[q, : n - lag])
+                else:
+                    ref[j, q] += w * (U[j, : n + lag] @ U[q, -lag:])
+    got = bartlett_long_run_cov(np, U, L)
+    assert np.max(np.abs(got - ref)) <= 1e-12 * np.max(np.abs(ref))
+    assert np.allclose(got, got.T)
