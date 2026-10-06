@@ -59,7 +59,7 @@ class TradeList:
         starts = [t for t in self.entry_times if t is not None] or times
         if len(times) < 2:
             return None
-        span = (_naive(max(times)) - _naive(min(starts))).total_seconds()
+        span = (max(map(_naive, times)) - min(map(_naive, starts))).total_seconds()
         if span <= 0:
             return None
         return len(self.returns) / (span / _YEAR_SECONDS)
@@ -203,7 +203,7 @@ def read_tradingview(source: Any, *, basis: str = "position", initial_capital: f
         trades[tid][slot] = r
         trades[tid]["side"] = "long" if "long" in kind else "short" if "short" in kind else ""
 
-    rets, t_in, t_out, sides, notes = [], [], [], [], []
+    rets, t_in, t_out, sides, notes, tids = [], [], [], [], [], []
     skipped_open = 0
     missing = 0
     equity_rows = []
@@ -234,18 +234,31 @@ def read_tradingview(source: Any, *, basis: str = "position", initial_capital: f
         t_in.append(_time(cell(en, c_time)) if en is not None else None)
         t_out.append(_time(cell(ex, c_time)))
         sides.append(t["side"])
+        tids.append(tid)
 
-    if basis == "equity":
-        rets = _equity_returns(equity_rows, initial_capital, name)
     if missing:
         notes.append(f"{missing} closed trades had no P&L or position value and were left out.")
     if not rets:
         raise ValueError(f"{name}: no closed trades with a P&L")
-    # exit order: TradingView numbers trades by entry, and lists newest first in some exports
+    # Exit order: TradingView numbers trades by entry, and some exports list
+    # newest first. Sorted before the equity curve is compounded, which must
+    # run forward in time.
     if all(t is not None for t in t_out):
-        idx = sorted(range(len(rets)), key=lambda i: _naive(t_out[i]))
+        idx = sorted(range(len(rets)), key=lambda i: (_naive(t_out[i]), _tid_key(tids[i])))
         rets, t_in, t_out, sides = ([v[i] for i in idx] for v in (rets, t_in, t_out, sides))
+        if basis == "equity":
+            equity_rows = [equity_rows[i] for i in idx]
+    if basis == "equity":
+        rets = _equity_returns(equity_rows, initial_capital, name)
     return TradeList(rets, t_in, t_out, sides, basis, name, skipped_open, notes)
+
+
+def _tid_key(tid: str) -> tuple:
+    """Trade numbers sort numerically; same-minute exits keep TradingView's order."""
+    try:
+        return (0, float(tid), "")
+    except ValueError:
+        return (1, 0.0, tid)
 
 
 def _equity_returns(rows, initial_capital, name) -> list[float]:

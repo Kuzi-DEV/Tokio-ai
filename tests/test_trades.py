@@ -107,3 +107,21 @@ def test_cli_reads_tradingview_exports(tmp_path, capsys):
     assert "2 trials" in capsys.readouterr().out
     plain = _write(tmp_path, "pnl\n0.01\n", "plain.csv")
     assert main([str(DATA), str(plain)]) == 2
+
+
+def test_equity_basis_is_compounded_forward_in_time(tmp_path):
+    lines = DATA.read_text(encoding="utf-8").splitlines()
+    rev = tmp_path / "rev.csv"
+    rev.write_text("\n".join([lines[0]] + lines[1:][::-1]) + "\n", encoding="utf-8")
+    a = read_tradingview(DATA, basis="equity")
+    b = read_tradingview(rev, basis="equity")
+    assert a.returns == pytest.approx(b.returns)
+
+
+def test_mixed_timezone_awareness_does_not_crash(tmp_path):
+    p = _write(tmp_path, "Trade #,Type,Date/Time,Signal,Price USD,Net P&L USD,Net P&L %\n"
+                         "1,Entry long,2024-01-01 09:00,L,50,,\n"
+                         "1,Exit long,2024-01-05T16:00:00+0000,X,55,5,10\n"
+                         "2,Entry long,2024-02-01 09:00,L,50,,\n"
+                         "2,Exit long,2024-02-05 16:00,X,52,2,4\n")
+    assert read_tradingview(p).periods_per_year > 0

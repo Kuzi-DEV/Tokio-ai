@@ -166,14 +166,23 @@ def deflated_sharpe_ratio(returns: Any, trials: int | None = None, *, sharpe_var
     if len(arrs) > 1:
         keep = ~np.isnan(np.vstack(arrs)).any(axis=0)
         arrs = [a[keep] for a in arrs]
-        srs = [a.mean() / a.std(ddof=1) for a in arrs]
         k = len(arrs)
         trials = trials or k
         if trials < k:
             raise ValueError(f"trials={trials} but {k} variants were passed")
-        var = float(np.var(srs, ddof=1)) if sharpe_variance is None else sharpe_variance
-        best = int(np.argmax(srs))
-        x = arrs[best]
+        # A flat variant has no Sharpe; it still counts as a trial, but can't
+        # be the best or inform the spread of Sharpes.
+        live = [a for a in arrs if len(a) > 2 and a.std(ddof=1) > 0]
+        if not live:
+            raise ValueError("every variant has zero variance")
+        srs = [a.mean() / a.std(ddof=1) for a in live]
+        if sharpe_variance is not None:
+            var = sharpe_variance
+        elif len(srs) > 1:
+            var = float(np.var(srs, ddof=1))
+        else:
+            var = 1 / (len(live[0]) - 1)
+        x = live[int(np.argmax(srs))]
     else:
         x = arrs[0]
         x = x[~np.isnan(x)]

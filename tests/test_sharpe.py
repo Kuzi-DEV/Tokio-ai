@@ -73,3 +73,10 @@ def test_check_backtest_reports_both_versions():
     assert "Probabilistic Sharpe Ratio" in str(res)
     res = check_backtest({f"s{i}": _x(seed=i) for i in range(5)})
     assert "Deflated Sharpe Ratio" in str(res)
+
+
+def test_a_flat_variant_does_not_hide_the_dsr():
+    g = {"a": _x(seed=1, edge=0.002), "b": _x(seed=2), "c": np.zeros(1000)}
+    d = deflated_sharpe_ratio(g)
+    assert d.trials == 3 and d.sharpe > 0.1
+    assert "Deflated Sharpe Ratio" in str(check_backtest(g))
