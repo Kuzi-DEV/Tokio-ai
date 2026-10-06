@@ -643,6 +643,53 @@ came out at −0.33, which reads as severe degradation of an edge that didn't
 degrade. TokIO reports the winner's median in-sample and out-of-sample
 Sharpe instead.
 
+## The Deflated and Probabilistic Sharpe Ratios
+
+`scripts/calibration_sharpe.py`, 400 paths per row (200 for grids), the same
+null P&L shapes and grids as `check_backtest`'s study above. A strategy
+passes when PSR/DSR ≥ 0.95, the papers' threshold; a calibrated statistic
+passes 5% of the time.
+
+One strategy, no search (PSR):
+
+| P&L shape | n | as published | `dependence=True` |
+|---|---:|---:|---:|
+| random positions, 1 bar | 500 / 2520 | 4.5 / 5.8 | 4.8 / 5.8 |
+| random positions, 20 bars | 500 / 2520 | 4.8 / 3.5 | 5.0 / 3.0 |
+| random positions, 120 bars | 500 / 2520 | 5.5 / 6.0 | 5.2 / 6.0 |
+| AR(+0.2) | 500 / 2520 | 11.0 / 9.5 | 7.2 / 6.0 |
+| AR(−0.2) | 500 / 2520 | 1.5 / 1.2 | 3.8 / 5.2 |
+| overlapping 5-bar tranches | 500 / 2520 | **20.5 / 18.8** | 4.8 / 4.0 |
+| overlapping 20-bar tranches | 500 / 2520 | **37.8 / 38.5** | 7.8 / 5.0 |
+| volatility regimes | 500 / 2520 | 4.0 / 4.8 | 4.2 / 5.0 |
+
+The published PSR's variance, (1 − γ₃·SR + (γ₄−1)/4·SR²)/(n−1), corrects
+for skew and kurtosis but assumes independent observations. A P&L that is a
+moving average of overlapping holdings has a long-run variance many times its
+plain variance (15 to 30 times, measured, for 20-bar tranches), and the PSR passes noise 38%
+of the time. `dependence=True` multiplies the variance by the Bartlett HAC
+long-run variance ratio, with the same window and fixed-b widening as
+`check_backtest`; its worst row is 7.8%, at n=500, where `check_backtest`'s
+own HAC test also reads 8.0%.
+
+Best of k variants, 2520 bars (DSR; Romano-Wolf for comparison):
+
+| grid | false positives: DSR / dep. / RW | power, Sharpe 1.0 planted: DSR / dep. / RW |
+|---|---:|---:|
+| independent, k=20 | 0.0 / 0.0 / 6.0 | 21.5 / 21.0 / **64.0** |
+| independent, k=100 | 0.5 / 0.5 / 6.0 | 10.0 / 11.5 / **40.0** |
+| lookback grid, k=20 | 0.5 / 0.5 / 3.5 | 36.0 / 35.0 / **77.0** |
+| lookback grid, k=100 | 0.5 / 0.5 / 6.0 | 36.5 / 37.0 / **64.5** |
+
+"Power" counts the planted variant only when it is the one tested and it
+passes. The DSR's expected-maximum benchmark grows with the number of trials
+and the spread of their Sharpes; on these grids it sits well above where a
+5% test would, so the DSR is safe but blunt. Romano-Wolf's critical value
+comes from the joint distribution of the variants' statistics, so it charges
+correlated variants less and finds the real edge two to four times as
+often. `check_backtest` therefore takes its verdict from Romano-Wolf and
+reports the DSR beside it.
+
 ## Binary contracts: `check_contracts`
 
 `scripts/calibration_contracts.py`. Books of contracts priced exactly at

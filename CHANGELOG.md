@@ -5,6 +5,21 @@
 0.4.0 was committed to git but never tagged or published to PyPI, so 0.5.0 is the first
 release to carry everything below and everything in 0.4.0.
 
+- **Deflated Sharpe Ratio, Probabilistic Sharpe Ratio, minimum track record
+  length** (`tokio_ai.sharpe`), as published and with `dependence=True`, and
+  on every `check_backtest` result. Measured: the published PSR passes a
+  zero-edge strategy 38% of the time on overlapping 20-bar trades (4-8% with
+  the dependence correction); the DSR on grids finds a planted Sharpe-1.0
+  edge 10-37% of the time vs Romano-Wolf's 40-77%.
+  `scripts/calibration_sharpe.py`.
+- **Robustness section** on every result: Sharpe with both tails trimmed,
+  money-making share of 8 time blocks, a one-bar-delay lookahead check (needs
+  positions and `asset_returns=`, automatic from the adapters), and the
+  minimum backtest length.
+- **TradingView.** `tokio_ai.read_tradingview()` reads the Strategy Tester's
+  "List of trades" export (CSV or XLSX, old and new formats); the CLI
+  recognises exports and treats several as variants. `pine/tokio_check.pine`
+  draws the per-trade verdict on the chart, pasted under any v6 strategy.
 - **`check_backtest` takes the backtest object itself**: a vectorbt
   `Portfolio` (a multi-column one is a grid of variants, corrected for each
   other) or the stats from backtesting.py's `Backtest.run()`, or a dict of

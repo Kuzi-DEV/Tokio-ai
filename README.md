@@ -23,8 +23,19 @@ import tokio_ai
 
 print(tokio_ai.check_backtest(pf))      # a vectorbt Portfolio, a whole parameter grid included
 print(tokio_ai.check_backtest(stats))   # what backtesting.py's Backtest(...).run() returns
+print(tokio_ai.check_backtest(tokio_ai.read_tradingview("List of trades.csv")))  # TradingView
 print(tokio_ai.check_backtest(pnl, trials=40))  # or plain per-bar returns, from anywhere
 ```
+
+Every result reports the **Deflated Sharpe Ratio** and **Probabilistic Sharpe
+Ratio** (Bailey & López de Prado), the **minimum track record length**, the
+**probability of backtest overfitting** (CSCV), a **haircut Sharpe**, the
+**breakeven transaction cost**, and a **lookahead check**, next to a
+significance test corrected for every variant you tried (a one-sided
+Romano-Wolf step-down, the stepwise form of White's Reality Check). Each one's
+false-positive rate is [measured](docs/calibration.md), including the
+published Deflated Sharpe Ratio's, which [fails on overlapping
+trades](#deflated-sharpe-ratio-psr-and-minimum-track-record-length).
 
 Nineteen SMA crossovers on 20 years of SPY. The best one, tested alone:
 **p = 0.038.** The same backtest with the other eighteen it was picked from:
@@ -289,7 +300,7 @@ NOT SIGNIFICANT after correcting for 19 trials (Romano-Wolf, using their
 correlation) (p=0.1181, alpha=0.05). Strongest variant: sma10/100.
 Haircut Sharpe after 19 trials: 0.21.
 
-No costs charged; sma10/100 turns over 6.1x a year.
+No extra costs charged (returns are taken as already net of any fees); sma10/100 turns over 6.1x a year.
 Probability of backtest overfitting (CSCV, 12870 splits): 0.91. Picking by
 backtest did worse than picking at random: the in-sample winner finished at
 or below the median out of sample in 91% of splits.
@@ -343,6 +354,107 @@ averages 0.11-0.26, and that variant is the one picked most often in 82-98%
 of grids.
 
 [Full study, including what broke on the way →](docs/calibration.md#finished-backtests-check_backtest)
+
+## Deflated Sharpe Ratio, PSR and minimum track record length
+
+The Deflated Sharpe Ratio (Bailey & López de Prado 2014) is the most-cited
+answer to "is my Sharpe luck?": the probability that the true Sharpe beats
+the best you'd expect from N zero-edge trials, allowing for skew and fat
+tails. TokIO computes it, the Probabilistic Sharpe Ratio and the minimum
+track record length, on every `check_backtest` result and on their own:
+
+```python
+from tokio_ai import deflated_sharpe_ratio, probabilistic_sharpe_ratio
+
+print(deflated_sharpe_ratio(variants))                 # {name: returns}: tests the best, deflated for all
+print(deflated_sharpe_ratio(pnl, trials=40))           # one series picked from 40
+print(probabilistic_sharpe_ratio(pnl, dependence=True))
+```
+
+We measured the published formulas the way we measure everything else: on
+P&L with no edge, how often do they pass (PSR or DSR ≥ 0.95)? They should
+pass 5% of the time.
+
+| P&L with no edge | PSR as published | PSR, `dependence=True` |
+|---|---:|---:|
+| random positions held 1-120 bars | 3.5-6.0% | 3.0-6.0% |
+| autocorrelated P&L (+0.2) | 9.5-11.0% | 6.0-7.2% |
+| overlapping 5-day trades | **18.8-20.5%** | 4.0-4.8% |
+| overlapping 20-day trades | **37.8-38.5%** | 5.0-7.8% |
+
+The published formula's variance assumes the bars are independent, so a
+trade log where each day's P&L averages 20 overlapping holdings passes a
+strategy with no edge **38% of the time**. `dependence=True` scales that
+variance by the P&L's long-run variance (the same HAC estimator
+`check_backtest` uses) and holds it to 4-8%. `check_backtest` reports both,
+and says so when only the published one passes.
+
+On grids, the DSR has the opposite problem. Picking the best of 20-100
+variants, it almost never passes noise (0-0.5%), but with a real Sharpe of
+1.0 planted in one variant it finds it **10-37%** of the time, against
+**40-77%** for the Romano-Wolf correction `check_backtest` uses for its
+verdict. The DSR treats the trials as independent; Romano-Wolf uses how
+correlated they actually are. That's why the verdict comes from Romano-Wolf
+and the DSR is reported alongside it.
+
+## Is it robust? Concentration, consistency and lookahead
+
+A p-value says the mean is above zero. It doesn't say what kind of profit
+it is. Every `check_backtest` result adds:
+
+- **Concentration:** the Sharpe without the best and worst 1% of bars (5
+  trades at each end). Trimming both tails keeps a zero-edge strategy at
+  zero; trimming only the best days sinks even buy-and-hold, which says
+  nothing.
+- **Consistency:** how many of 8 equal time blocks made money.
+- **Lookahead:** the Sharpe if every position were taken one bar later.
+  Given positions and the asset's own returns (automatic from vectorbt and
+  backtesting.py, or `asset_returns=`), TokIO rebuilds the P&L and shifts
+  it. A strategy that peeks at the bar's own close collapses.
+- **Minimum backtest length** (Bailey, Borwein, López de Prado & Zhu 2014):
+  the years of history before N trials can't produce this Sharpe by chance.
+
+A deliberately cheating SPY strategy (it goes long on days that close up,
+deciding at that day's close) passes every significance test, p=0.0000 with
+a Sharpe of 8.2. The robustness section catches it:
+
+```
+Rebuilt from its positions (no costs) the Sharpe is 8.74; with every position
+taken one bar later, 0.16. Most of the edge needs same-bar execution: check
+for lookahead (a signal using the bar's own close or later) before trusting it.
+```
+
+An honest 10/50 crossover on the same data: 0.61, and 0.61 a bar later.
+
+## TradingView
+
+**Strategy Tester export.** Download the "List of trades" (CSV, or the XLSX
+report) and test it per closed trade:
+
+```python
+trades = tokio_ai.read_tradingview("List of trades.csv")
+print(tokio_ai.check_backtest(trades, trials=30))
+```
+
+```bash
+tokio-ai-backtest "List of trades.csv" --trials 30
+tokio-ai-backtest v1.csv v2.csv v3.csv          # several exports = several variants
+```
+
+Each trade's return is its P&L over the position's value (TradingView's "Net
+P&L %"), so sizing doesn't move the verdict; `basis="equity"` uses P&L over
+account equity. Old and new export formats, either row order, open trades
+skipped. (TradingView's export needs a paid plan.)
+
+**On the chart, free.** [`pine/tokio_check.pine`](pine/tokio_check.pine) is a
+block you paste under any Pine v6 strategy. It reads the strategy's closed
+trades and draws the verdict as a table: the dependence-corrected test,
+Šidák's correction for the variants you say you tried, the Deflated /
+Probabilistic Sharpe Ratio (corrected and as published), the minimum track
+record length and the trimmed Sharpe. Its arithmetic matches the Python
+package's to every printed digit. [`pine/demo_sma_cross.pine`](pine/demo_sma_cross.pine)
+is a ready-made example. Grids, PBO, costs and the lookahead check need the
+Python package.
 
 ## Bets on binary contracts: `check_contracts`
 
