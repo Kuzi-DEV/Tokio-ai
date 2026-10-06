@@ -42,8 +42,8 @@ def is_backtest_object(obj: Any) -> bool:
     return _is_vectorbt(obj) or _is_backtesting_stats(obj)
 
 
-def from_vectorbt(portfolio: Any) -> tuple[Any, Any]:
-    """(returns, positions) from a vectorbt Portfolio.
+def from_vectorbt(portfolio: Any) -> tuple[Any, Any, Any]:
+    """(returns, positions, asset returns) from a vectorbt Portfolio.
 
     Returns are vectorbt's own per-bar returns, so they are already net of
     the fees and slippage you gave it. The position over bar t is the
@@ -54,16 +54,26 @@ def from_vectorbt(portfolio: Any) -> tuple[Any, Any]:
     """
     returns = portfolio.returns()
     exposure = (portfolio.asset_value() / portfolio.value()).shift(1).fillna(0.0)
+    close = getattr(portfolio, "close", None)
+    asset = close.pct_change() if close is not None and hasattr(close, "pct_change") else None
     if getattr(returns, "ndim", 1) == 2:
         names = [_name(c) for c in returns.columns]
         rets = {nm: returns.iloc[:, j] for j, nm in enumerate(names)}
         pos = {nm: exposure.iloc[:, j] for j, nm in enumerate(names)}
-        return rets, pos
-    return returns, exposure
+        if asset is not None and getattr(asset, "ndim", 1) == 2 and asset.shape == returns.shape:
+            assets = {nm: asset.iloc[:, j] for j, nm in enumerate(names)}
+        elif asset is not None and getattr(asset, "ndim", 1) == 1:
+            assets = {nm: asset for nm in names}
+        else:
+            assets = None
+        return rets, pos, assets
+    if asset is not None and getattr(asset, "ndim", 1) == 2:
+        asset = asset.iloc[:, 0]
+    return returns, exposure, asset
 
 
-def from_backtesting(stats: Any) -> tuple[Any, Any]:
-    """(returns, positions) from the stats Series that backtesting.py's ``Backtest.run()`` returns.
+def from_backtesting(stats: Any) -> tuple[Any, Any, Any]:
+    """(returns, positions, asset returns) from the stats Series that backtesting.py's ``Backtest.run()`` returns.
 
     Returns come from the equity curve, so they are net of the commission
     you set. Positions are rebuilt from the trade list: each trade's signed
@@ -96,7 +106,13 @@ def from_backtesting(stats: Any) -> tuple[Any, Any]:
         positions = pd.Series(pos, index=equity.index)
     except ImportError:  # pragma: no cover - backtesting.py itself needs pandas
         positions = pos
-    return returns, positions
+    asset = None
+    data = getattr(_get(stats, "_strategy"), "data", None)
+    df = getattr(data, "df", None)
+    if df is not None and "Close" in getattr(df, "columns", ()) and len(df) == len(eq):
+        asset = df["Close"].pct_change()
+        asset.index = equity.index
+    return returns, positions, asset
 
 
 def _get(stats: Any, key: str) -> Any:
@@ -106,24 +122,30 @@ def _get(stats: Any, key: str) -> Any:
         return None
 
 
-def unpack(obj: Any) -> tuple[Any, Any]:
-    """(returns, positions) from a vectorbt Portfolio, backtesting.py stats, or a dict of them."""
-    if isinstance(obj, Mapping):
-        rets, pos = {}, {}
+def unpack(obj: Any) -> tuple[Any, Any, Any]:
+    """(returns, positions, asset returns) from a vectorbt Portfolio, backtesting.py stats, or a dict of them.
 
-        def add(key, r, p):
+    Asset returns (the traded instrument's own per-bar returns) are None
+    where the object doesn't carry prices.
+    """
+    if isinstance(obj, Mapping):
+        rets, pos, assets = {}, {}, {}
+
+        def add(key, r, p, a):
             if key in rets:  # a silently overwritten variant would undercount the trials
                 raise ValueError(f"two variants are both named {key!r}; rename one")
             rets[key], pos[key] = r, p
+            if a is not None:
+                assets[key] = a
 
         for name, v in obj.items():
-            r, p = unpack(v)
+            r, p, a = unpack(v)
             if isinstance(r, Mapping):
                 for sub, col in r.items():
-                    add(f"{name}/{sub}", col, p[sub])
+                    add(f"{name}/{sub}", col, p[sub], a.get(sub) if a else None)
             else:
-                add(str(name), r, p)
-        return rets, pos
+                add(str(name), r, p, a)
+        return rets, pos, assets or None
     if _is_vectorbt(obj):
         return from_vectorbt(obj)
     if _is_backtesting_stats(obj):

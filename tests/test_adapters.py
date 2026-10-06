@@ -69,7 +69,7 @@ def test_vectorbt_grid_becomes_variants_with_tuple_names():
 def test_backtesting_stats_rebuilds_positions_from_trades():
     eq = pd.Series(100 * np.cumprod(1 + np.random.default_rng(3).standard_normal(300) * 0.01))
     trades = {"Size": [10, -5], "EntryPrice": [10.0, 20.0], "EntryBar": [5, 100], "ExitBar": [49, 199]}
-    rets, pos = from_backtesting(_stats(eq, trades))
+    rets, pos, _ = from_backtesting(_stats(eq, trades))
     assert rets.iloc[1:].to_numpy() == pytest.approx(eq.pct_change().iloc[1:].to_numpy())
     assert pos.iloc[4] == 0 and pos.iloc[50] == 0 and pos.iloc[250] == 0
     assert pos.iloc[5] == pytest.approx(10 * 10.0 / eq.iloc[5])
@@ -79,14 +79,14 @@ def test_backtesting_stats_rebuilds_positions_from_trades():
 
 def test_backtesting_stats_with_no_trades_is_flat():
     eq = pd.Series(np.full(100, 100.0))
-    _, pos = from_backtesting(_stats(eq, {"Size": [], "EntryPrice": [], "EntryBar": [], "ExitBar": []}))
+    _, pos, _ = from_backtesting(_stats(eq, {"Size": [], "EntryPrice": [], "EntryBar": [], "ExitBar": []}))
     assert (pos == 0).all()
 
 
 def test_dict_of_backtests_and_explicit_positions_win():
     a, b = _rets(400, 4), _rets(400, 5)
     ones = pd.Series(1.0, index=a.index)
-    rets, pos = unpack({"a": FakePortfolio(a, ones), "b": FakePortfolio(b, ones)})
+    rets, pos, _ = unpack({"a": FakePortfolio(a, ones), "b": FakePortfolio(b, ones)})
     assert set(rets) == {"a", "b"} and set(pos) == {"a", "b"}
     mine = {"a": ones * 0.5, "b": ones * 0.5}
     res = check_backtest({"a": FakePortfolio(a, ones), "b": FakePortfolio(b, ones)}, positions=mine, costs=0.001)
@@ -122,7 +122,7 @@ def test_real_backtesting_py_if_installed():
                 self.position.close()
 
     stats = bt.Backtest(GOOG, Cross, commission=0.001).run()
-    rets, pos = from_backtesting(stats)
+    rets, pos, _ = from_backtesting(stats)
     assert len(rets) == len(pos) == len(GOOG)
     assert pos.max() > 0.5
     open_trades = stats["_strategy"].trades

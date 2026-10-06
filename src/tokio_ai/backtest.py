@@ -38,6 +38,8 @@ from statistics import NormalDist
 from typing import Any
 
 from .adapters import is_backtest_object, unpack
+from .robustness import diagnose
+from .trades import TradeList, on_calendar
 from .check import _aligned
 from .family import DRAWS, _romano_wolf
 from .rigor.overlap import bartlett_long_run_cov, default_bandwidth
@@ -155,6 +157,14 @@ class BacktestResult:
     # Probability of backtest overfitting (CSCV), computed when at least
     # MIN_PBO_VARIANTS variants and enough bars for 16 blocks are passed.
     overfitting: Any = None
+    # Bailey & Lopez de Prado's Deflated Sharpe Ratio (Probabilistic, for a
+    # single trial) of the highest-Sharpe variant, net of costs: with the
+    # variance scaled for serial dependence, and as published (independent
+    # bars). tokio_ai.sharpe.SharpeStats; None when not reportable.
+    deflated: Any = None
+    deflated_published: Any = None
+    bar_unit: str = "bars"
+    robustness: Any = None  # tokio_ai.robustness.Robustness of the strongest variant
 
     @property
     def best(self) -> StrategyResult:
@@ -202,7 +212,8 @@ class BacktestResult:
                     f"{self.costs * self.turnover_per_year:.2%} a year."
                 )
             else:
-                out.append(f"No costs charged; {who} turns over {self.turnover_per_year:.1f}x a year.")
+                out.append(f"No extra costs charged (returns are taken as already net of any fees); "
+                           f"{who} turns over {self.turnover_per_year:.1f}x a year.")
         if self.p_before_costs is not None and self.p_before_costs <= self.alpha < b.p_adjusted:
             out.append(
                 f"Before costs it was significant (p={self.p_before_costs:.4f}). The costs are "
@@ -217,10 +228,28 @@ class BacktestResult:
             )
         return out
 
+    def _sharpe_lines(self) -> list[str]:
+        d, pub = self.deflated, self.deflated_published
+        if d is None or pub is None:
+            return []
+        name = "Deflated Sharpe Ratio" if self.trials > 1 else "Probabilistic Sharpe Ratio"
+        top = max((s for s in self.strategies if s.reportable), key=lambda s: s.sharpe, default=None)
+        of = f" of {top.name}" if len(self.strategies) > 1 and top is not None else ""
+        line = (f"{name}{of}: {d.psr:.2f} allowing for serial dependence; {pub.psr:.2f} as "
+                f"published, which treats {self.bar_unit} as independent (0.95 passes).")
+        if pub.psr >= 0.95 > d.psr:
+            line += (" Only the published version passes: on overlapping-trade P&L it passes "
+                     "a zero-edge strategy 38% of the time instead of 5%.")
+        out = [line]
+        if d.min_track_record is not None and self.trials <= 1:
+            out.append(f"Minimum track record length at 95%: {math.ceil(d.min_track_record)} "
+                       f"{self.bar_unit} (have {d.n}).")
+        return out
+
     def __str__(self) -> str:
         b = self.best
         if not b.reportable:
-            lines = [f"NOT REPORTABLE: {b.n_bars} usable bars; a Sharpe ratio needs at least "
+            lines = [f"NOT REPORTABLE: {b.n_bars} usable {self.bar_unit}; a Sharpe ratio needs at least "
                      f"{MIN_BARS} before any verdict means anything."]
         else:
             years = b.n_bars / self.periods_per_year
@@ -228,13 +257,14 @@ class BacktestResult:
             lines = [
                 f"{self.verdict}{self._correction_text()} (p={b.p_adjusted:.4f}, "
                 f"alpha={self.alpha}).{who}",
-                f"Sharpe {b.sharpe:.2f} annualized over {b.n_bars} bars (~{years:.1f} years at "
+                f"Sharpe {b.sharpe:.2f} annualized over {b.n_bars} {self.bar_unit} (~{years:.1f} years at "
                 f"{self.periods_per_year:g}/year). A plain t-test would say p={b.p_naive:.4f}; "
                 f"allowing for serial dependence in the P&L, p={b.p_alone:.4f} before any "
                 f"correction for trials.",
             ]
             if self.trials > 1:
                 lines.append(f"Haircut Sharpe after {self.trials} trials: {b.haircut_sharpe:.2f}.")
+            lines.extend(self._sharpe_lines())
             n_ok = b.survives_trials(self.alpha)
             if n_ok == 0:
                 lines.append("It would not pass even as the only strategy ever tried.")
@@ -259,6 +289,8 @@ class BacktestResult:
                 lines.append(f"{s.name:<{width}}  {s.sharpe:>7.2f}  {s.p_naive:>8.4f}  "
                              f"{s.p_alone:>8.4f}  {s.p_adjusted:>8.4f}  {s.haircut_sharpe:>7.2f}  {v}")
         extra = self._cost_lines()
+        if self.robustness is not None and b.reportable:
+            extra = extra + self.robustness.lines()
         if extra or self.overfitting is not None:
             lines.append("")
         lines.extend(extra)
@@ -304,7 +336,8 @@ def check_backtest(
     benchmark: Iterable[Any] | None = None,
     positions: Any = None,
     costs: float = 0.0,
-    periods_per_year: float = 252,
+    asset_returns: Any = None,
+    periods_per_year: float | None = None,
     alpha: float = 0.05,
     bandwidth: int | None = None,
     seed: int = 0,
@@ -314,7 +347,9 @@ def check_backtest(
     `returns` is the strategy's per-bar returns (net of costs) in time order:
     a list, numpy array or pandas Series. It can also be the backtest
     itself: a vectorbt Portfolio (a multi-column one is a grid of variants),
-    the stats from backtesting.py's ``Backtest.run()``, or a dict of those;
+    the stats from backtesting.py's ``Backtest.run()``, a trade list from
+    `tokio_ai.read_tradingview` (tested per closed trade; periods_per_year
+    defaults to trades per year), or a dict of those;
     returns and positions are then read from it (see `tokio_ai.adapters`). To correct for a search, pass every
     variant you tried instead, as a dict {name: returns}, a pandas DataFrame
     or a 2-D array with one column per variant; the verdict is then about the
@@ -340,6 +375,12 @@ def check_backtest(
     without it. With it, the lag window also covers the positions' mean
     holding run, the same guard `check` applies to a persistent condition.
 
+    `asset_returns`: optional, the traded instrument's own per-bar returns
+    (a dict per variant if they differ). With `positions`, the result adds a
+    one-bar-delay check: the Sharpe if every position were taken a bar
+    later, the usual giveaway of lookahead. The vectorbt and backtesting.py
+    adapters fill this in.
+
     `costs`: cost per unit of position traded, as a return: 0.0005 is 5 bps
     for trading 100% of capital. Needs `positions` for every variant; each
     bar is charged `costs * |position change|` (entering from flat counts;
@@ -358,9 +399,21 @@ def check_backtest(
         raise ImportError("check_backtest needs numpy (pip install numpy)") from e
 
     if is_backtest_object(returns):
-        returns, unpacked_positions = unpack(returns)
+        returns, unpacked_positions, unpacked_assets = unpack(returns)
         if positions is None:
             positions = unpacked_positions
+        if asset_returns is None:
+            asset_returns = unpacked_assets
+    trade_notes: list[str] = []
+    bar_unit = "bars"
+    if isinstance(returns, TradeList) or (
+            isinstance(returns, Mapping) and returns and all(isinstance(v, TradeList) for v in returns.values())):
+        bar_unit = "trades" if isinstance(returns, TradeList) else "days"
+        returns, ppy, trade_notes = _from_trade_lists(returns)
+        if periods_per_year is None:
+            periods_per_year = ppy
+    if periods_per_year is None:
+        periods_per_year = 252
 
     if not 0 < alpha < 1:
         raise ValueError(f"alpha must be between 0 and 1, got {alpha!r}")
@@ -404,6 +457,7 @@ def check_backtest(
     runs = [0] * k
     turnover = [None] * k
     net = [None] * k  # mean signed position, NaN counted as flat
+    held = [None] * k  # positions as given
     if positions is not None:
         pos_map = positions if isinstance(positions, Mapping) else (
             {names[0]: positions} if k == 1 else None)
@@ -423,6 +477,7 @@ def check_backtest(
                 runs[j] = max(1, round(len(sg) / (1 + int(np.count_nonzero(sg[1:] != sg[:-1])))))
             turnover[j] = np.abs(np.diff(np.nan_to_num(pz, nan=0.0), prepend=0.0))
             net[j] = np.nan_to_num(pz, nan=0.0)
+            held[j] = pz
     if costs > 0 and any(t is None for t in turnover):
         missing = [nm for nm, t in zip(names, turnover) if t is None]
         raise ValueError(f"costs need positions for every variant; missing for {missing}")
@@ -441,7 +496,7 @@ def check_backtest(
     if T is not None:
         T = T[:, keep]
 
-    notes = []
+    notes = list(trade_notes)
     if dropped:
         notes.append(f"{dropped} bars with a missing value in some series were dropped from all of them.")
     if benchmark is not None:
@@ -458,6 +513,16 @@ def check_backtest(
         Xn = X - costs * T if costs else X
         res = replace(res, overfitting=probability_of_overfitting(
             {nm: Xn[j] for j, nm in enumerate(names)}, periods_per_year=periods_per_year))
+    if res.best.reportable:
+        Xn = X - costs * T if costs else X
+        res = replace(res, bar_unit=bar_unit, **_deflated(Xn, names, trials, periods_per_year, bandwidth))
+        jb = names.index(res.best.name)
+        pos_b = held[jb][keep] if held[jb] is not None else None
+        res = replace(res, robustness=diagnose(
+            np, Xn[jb], periods_per_year, bar_unit, res.best.name, trials, pos_b,
+            _asset_for(np, asset_returns, res.best.name, n, keep)))
+    else:
+        res = replace(res, bar_unit=bar_unit)
     if not res.best.reportable:
         return res
     j = names.index(res.best.name)
@@ -484,6 +549,51 @@ def check_backtest(
     if gross.significant:
         extra["breakeven_cost"] = _breakeven(run, X, T)
     return replace(res, **extra)
+
+
+def _asset_for(np, asset_returns, name, n, keep):
+    """The traded asset's returns for one variant, on the kept bars, or None."""
+    if asset_returns is None:
+        return None
+    a = asset_returns.get(name) if isinstance(asset_returns, Mapping) else asset_returns
+    if a is None:
+        return None
+    arr = np.asarray(a, dtype=float)
+    if arr.shape != (n,):
+        raise ValueError(f"asset_returns have length {len(arr)}, returns have {n}")
+    return arr[keep]
+
+
+def _deflated(X, names, trials, periods_per_year, bandwidth) -> dict:
+    """DSR/PSR of the highest-Sharpe variant, with and without the dependence correction."""
+    from .sharpe import deflated_sharpe_ratio
+
+    try:
+        arg = {nm: X[j] for j, nm in enumerate(names)} if len(names) > 1 else X[0]
+        kw = dict(trials=trials, periods_per_year=periods_per_year, bandwidth=bandwidth)
+        return {"deflated": deflated_sharpe_ratio(arg, dependence=True, **kw),
+                "deflated_published": deflated_sharpe_ratio(arg, **kw)}
+    except ValueError:  # e.g. a flat series
+        return {}
+
+
+def _from_trade_lists(returns):
+    """A TradeList (or {name: TradeList}) as returns, periods per year, and notes."""
+    if isinstance(returns, TradeList):
+        notes = list(returns.notes)
+        basis = "position value" if returns.basis == "position" else "account equity"
+        notes.append(f"Tested per closed trade ({len(returns)} trades, returns on {basis}); "
+                     "the Sharpe is per trade, annualized by trades per year.")
+        if returns.skipped_open:
+            notes.append(f"{returns.skipped_open} trade(s) still open at the end were left out.")
+        ppy = returns.periods_per_year
+        if ppy is None:
+            notes.append("No usable dates, so periods_per_year defaults to 252; pass the real trades per year.")
+        return list(returns.returns), ppy, notes
+    series, ppy = on_calendar(returns)
+    notes = [f"{len(returns)} trade lists put on a common calendar: each trade's return is booked on "
+             "its exit day, summed per day."]
+    return series, ppy, notes
 
 
 def _breakeven(run, X, T) -> float | None:

@@ -81,7 +81,7 @@ _FALSE = {"0", "false", "no", "lost", "loss", "n", "f"}
 def _contracts(a) -> str:
     from .contracts import check_contracts
 
-    raw = read_raw(a.csv)
+    raw = read_raw(a.csv[0])
     price_col, outcome_col = a.contracts
 
     def col(name):
@@ -137,20 +137,50 @@ def to_returns(curve: list[float]) -> list[float]:
     return out
 
 
+def _stem(path: str) -> str:
+    import os
+
+    return os.path.splitext(os.path.basename(path))[0]
+
+
+def _tradingview_files(paths: list[str]) -> bool:
+    """True if every file is a TradingView trade export; an error if only some are."""
+    from .trades import is_tradingview_header
+
+    flags = []
+    for p in paths:
+        if p.lower().endswith((".xlsx", ".xls")):
+            flags.append(True)
+            continue
+        with open(p, newline="", encoding="utf-8-sig") as f:
+            header = next(csv.reader(f), [])
+        flags.append(is_tradingview_header(header))
+    if any(flags) and not all(flags):
+        raise ValueError("mix of TradingView exports and plain CSVs; pass one kind")
+    return all(flags)
+
+
 def main(argv: list[str] | None = None) -> int:
     force_utf8_stdio()
     ap = argparse.ArgumentParser(
         prog="tokio-ai-backtest",
         description="Is this backtest distinguishable from luck, given how many variants you tried?",
     )
-    ap.add_argument("csv", help="CSV with a header row; one numeric column per strategy variant")
+    ap.add_argument("csv", nargs="+",
+                    help="CSV with a header row and one numeric column per strategy variant; or one "
+                         "or more TradingView Strategy Tester 'List of trades' exports (.csv/.xlsx), "
+                         "recognised by their columns")
     ap.add_argument("--trials", type=int, help="variants tried in total (default: the columns given)")
     ap.add_argument("--columns", nargs="+", help="only these columns are variants")
     ap.add_argument("--benchmark", help="column to subtract from every variant first")
     ap.add_argument("--equity", action="store_true",
                     help="columns are equity curves or prices, not per-bar returns")
-    ap.add_argument("--periods-per-year", type=float, default=252,
-                    help="bars per year, for the annualized Sharpe (252 daily, 52 weekly, 12 monthly)")
+    ap.add_argument("--periods-per-year", type=float, default=None,
+                    help="bars per year, for the annualized Sharpe (default 252 daily; 52 weekly, 12 "
+                         "monthly; for trade lists, trades per year from the dates)")
+    ap.add_argument("--basis", choices=("position", "equity"), default="position",
+                    help="TradingView exports: each trade's return on the position's value (default) "
+                         "or on account equity before the trade")
     ap.add_argument("--alpha", type=float, default=0.05)
     ap.add_argument("--contracts", nargs=2, metavar=("PRICE", "OUTCOME"),
                     help="binary-contract mode: the price paid and whether that side won "
@@ -177,7 +207,19 @@ def main(argv: list[str] | None = None) -> int:
     from .backtest import check_backtest  # numpy import deferred until arguments are valid
 
     try:
-        cols = read_columns(a.csv)
+        if _tradingview_files(a.csv):
+            from .trades import read_tradingview
+
+            lists = {_stem(f): read_tradingview(f, basis=a.basis) for f in a.csv}
+            if len(lists) != len(a.csv):
+                raise ValueError("two exports have the same file name; rename one")
+            res = check_backtest(lists if len(lists) > 1 else next(iter(lists.values())),
+                                 trials=a.trials, periods_per_year=a.periods_per_year, alpha=a.alpha)
+            print(res)
+            return 0
+        if len(a.csv) > 1:
+            raise ValueError("several files are only for TradingView exports; put variants in columns")
+        cols = read_columns(a.csv[0])
         if a.equity:
             cols = {k: to_returns(v) for k, v in cols.items()}
         bench = None
