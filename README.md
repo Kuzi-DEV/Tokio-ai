@@ -457,8 +457,8 @@ with no warnings (even under a strategy that reuses 25 common variable
 names), and on a 469-trade SPY backtest every number in its table matches
 the Python package's on the same trades. [`pine/demo_rsi2_pullback.pine`](pine/demo_rsi2_pullback.pine)
 is a ready-made example: a classic RSI(2) pullback on SPY daily that passes a
-plain t-test at p=0.0004 and is NOT SIGNIFICANT (p=0.098, Deflated Sharpe
-0.82) once you admit to 20 variants. The table can sit in any of nine
+plain t-test at p=0.0004 and is NOT SIGNIFICANT (p=0.11, Deflated Sharpe
+0.82, 106 trades where it needs 351) once you admit to 20 variants. The table can sit in any of nine
 positions. Grids, PBO, costs and the lookahead check need the
 Python package.
 

@@ -1,10 +1,10 @@
 //@version=6
 // Demo: a classic RSI(2) pullback on SPY daily, with the TokIO check pasted underneath.
-// Alone it looks like an edge: plain t-test p=0.0004, dependence-corrected p=0.005.
+// Alone it looks like an edge: plain t-test p=0.0004, dependence-corrected p=0.006.
 // Set "Variants tried" to 20 (the RSI lengths, thresholds and exits you might have
-// tried) and it is NOT SIGNIFICANT: p=0.098, Deflated Sharpe 0.82, and its minimum
-// track record is 336 trades against the 107 it has.
-strategy("RSI(2) pullback + TokIO check", overlay = true, initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.05)
+// tried) and it is NOT SIGNIFICANT: p=0.11, Deflated Sharpe 0.82, and its minimum
+// track record is 351 trades against the 106 it has (0.05% commission, 1 tick slippage).
+strategy("RSI(2) pullback + TokIO check", overlay = true, initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.05, slippage = 1)
 rsiLen = input.int(2, "RSI length")
 buyBelow = input.int(5, "Buy when RSI below")
 sellAbove = input.int(60, "Sell when RSI above")
