@@ -451,8 +451,10 @@ block you paste under any Pine v6 strategy. It reads the strategy's closed
 trades and draws the verdict as a table: the dependence-corrected test,
 Šidák's correction for the variants you say you tried, the Deflated /
 Probabilistic Sharpe Ratio (corrected and as published), the minimum track
-record length and the trimmed Sharpe. Its arithmetic matches the Python
-package's to every printed digit. [`pine/demo_sma_cross.pine`](pine/demo_sma_cross.pine)
+record length and the trimmed Sharpe. Verified in TradingView: it compiles
+with no warnings (even under a strategy that reuses 25 common variable
+names), and on a 469-trade SPY backtest every number in its table matches
+the Python package's on the same trades. [`pine/demo_sma_cross.pine`](pine/demo_sma_cross.pine)
 is a ready-made example. Grids, PBO, costs and the lookahead check need the
 Python package.
 
