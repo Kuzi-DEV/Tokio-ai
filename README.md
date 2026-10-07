@@ -15,7 +15,8 @@ you tried before this one. Every test it runs has a measured false-positive
 rate, published and reproducible.
 
 ```bash
-pip install tokio-ai
+pip install tokio-ai            # the statistics; needs only numpy
+pip install "tokio-ai[agent]"   # plus the LLM research agent
 ```
 
 ```python
@@ -598,8 +599,10 @@ is planned, not built yet).
 
 ## Quickstart
 
+The research agent (the statistics above need none of this):
+
 ```bash
-pip install tokio-ai
+pip install "tokio-ai[agent]"
 cp .env.example .env   # or just set the env vars directly
 # fill in OPENAI_API_KEY (a free key from https://build.nvidia.com works out of the box)
 # and TOKIO_AI_USER_AGENT in .env

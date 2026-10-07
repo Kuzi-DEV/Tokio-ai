@@ -93,5 +93,5 @@ class TestLedger:
         for t, s in zip(self.tests, sig):
             flag = "SIGNIFICANT" if s else "not significant"
             lines.append(f"  {t.name}: p={t.result.p_value:.4f} gap={t.result.observed_gap:+.4%} -> {flag}")
-        lines.append(f"[{stamp()}]")
+        lines.append(f"[{stamp(agent=True)}]")
         return "\n".join(lines)

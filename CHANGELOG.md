@@ -5,6 +5,11 @@
 0.4.0 was committed to git but never tagged or published to PyPI, so 0.5.0 is the first
 release to carry everything below and everything in 0.4.0.
 
+- **Lighter install.** `pip install tokio-ai` now installs only numpy; the
+  research agent's openai and textual moved to the `agent` extra
+  (`pip install "tokio-ai[agent]"`). `tokio-ai` / `tokio-ai-plain` say so if
+  they're missing. Result stamps no longer list the openai version except on
+  the agent's own output.
 - **Deflated Sharpe Ratio, Probabilistic Sharpe Ratio, minimum track record
   length** (`tokio_ai.sharpe`), as published and with `dependence=True`, and
   on every `check_backtest` result. Measured: the published PSR passes a

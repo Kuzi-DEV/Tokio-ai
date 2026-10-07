@@ -234,7 +234,11 @@ class BacktestResult:
             return []
         name = "Deflated Sharpe Ratio" if self.trials > 1 else "Probabilistic Sharpe Ratio"
         top = max((s for s in self.strategies if s.reportable), key=lambda s: s.sharpe, default=None)
-        of = f" of {top.name}" if len(self.strategies) > 1 and top is not None else ""
+        of = ""
+        if len(self.strategies) > 1 and top is not None:
+            of = (f" of {top.name}" if top.name == self.best.name else
+                  f" of {top.name} (the DSR tests the highest Sharpe; the verdict's variant is the one "
+                  f"closest to passing once dependence is allowed for)")
         line = (f"{name}{of}: {d.psr:.2f} allowing for serial dependence; {pub.psr:.2f} as "
                 f"published, which treats {self.bar_unit} as independent (0.95 passes).")
         if pub.psr >= 0.95 > d.psr:

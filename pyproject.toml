@@ -27,8 +27,6 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.22",
-    "openai>=1.50.0",
-    "textual>=0.60.0",
 ]
 
 [project.urls]
@@ -38,12 +36,14 @@ Documentation = "https://github.com/jordanahern2009-svg/Tokio-ai#readme"
 Issues = "https://github.com/jordanahern2009-svg/Tokio-ai/issues"
 
 [project.scripts]
-tokio-ai = "tokio_ai.tui:main"
-tokio-ai-plain = "tokio_ai.cli:main"
+tokio-ai = "tokio_ai._agent_entry:tui"
+tokio-ai-plain = "tokio_ai._agent_entry:plain"
 tokio-ai-backtest = "tokio_ai.backtest_cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+# The LLM research agent (tokio-ai / tokio-ai-plain). The statistics need only numpy.
+agent = ["openai>=1.50.0", "textual>=0.60.0"]
+dev = ["pytest>=8.0", "openai>=1.50.0", "textual>=0.60.0"]
 # Only for the comparison scripts (calibration_check.py, benchmark.py), which
 # run the tests TokIO is measured against.
 calibration = ["scipy", "statsmodels", "arch"]
