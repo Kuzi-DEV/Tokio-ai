@@ -37,9 +37,15 @@ def test_stamp_works_when_not_installed_at_all(monkeypatch):
 
     monkeypatch.setattr(tokio_ai, "__version__", "1.0.0")
     monkeypatch.setattr(provenance, "version", missing)
-    text = provenance.stamp()
+    text = provenance.stamp(agent=True)
     assert "tokio-ai 1.0.0" in text
     assert "openai unknown" in text
+
+
+def test_library_results_do_not_mention_the_agent_backend(monkeypatch):
+    monkeypatch.setattr(provenance, "version", lambda name: "1.2.3")
+    assert "openai" not in provenance.stamp()
+    assert "openai 1.2.3" in provenance.stamp(agent=True)
 
 
 def test_stamp_includes_python_version():

@@ -3,9 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TokIO AI</title>
-<meta name="description" content="An open-source financial research agent whose false-positive rate is measured, not assumed. Permutation tests, multiple-testing correction, and a published calibration study.">
-<meta name="description" content="An open-source financial research agent that runs every claim through honest statistical testing before trusting it.">
+<title>TokIO: is your backtest real?</title>
+<meta name="description" content="Is your backtest real? Deflated Sharpe Ratio, backtest overfitting (PBO) and lookahead checks with measured false-positive rates. Works with vectorbt, backtesting.py and TradingView.">
 <style>
   :root {
     color-scheme: light dark;
@@ -76,67 +75,73 @@
     background: rgba(127, 127, 127, 0.06);
   }
   .callout p:last-child { margin-bottom: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95em; }
+  th, td { border-bottom: 1px solid var(--border); padding: 0.4rem 0.5rem; text-align: left; }
+  td.n, th.n { text-align: right; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>TokIO AI</h1>
-  <p class="tagline">An open-source financial research agent that treats "the data supports this" as a claim to be tested, not a vibe to be trusted.</p>
+  <h1>Is your backtest real?</h1>
+  <p class="tagline">TokIO tells you whether a strategy's profit is distinguishable from luck, once you allow for what a Sharpe ratio hides: P&amp;L that isn't independent from bar to bar, and every variant you tried before this one. Every test it runs has a measured false-positive rate.</p>
 
   <div class="badges">
     <img src="https://github.com/jordanahern2009-svg/Tokio-ai/actions/workflows/test.yml/badge.svg" alt="tests">
+    <img src="https://img.shields.io/pypi/v/tokio-ai.svg" alt="PyPI">
     <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License">
     <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+">
-    <img src="https://img.shields.io/pypi/v/tokio-ai.svg" alt="PyPI">
   </div>
 
-  <p>Give it a ticker, a filing, or a plain-English trading hypothesis. It pulls real data &mdash; price history, SEC filings, a real S&amp;P 500 snapshot &mdash; and before it will tell you a pattern is real, it runs the comparison through a randomization test, checks the sample size against a hard floor, and corrects for every other hypothesis you've asked it to test in the same conversation.</p>
+  <pre><code>pip install tokio-ai
 
-  <p>Most AI stock-chat tools will confidently describe a pattern in a handful of data points. This one is built to tell you when it can't.</p>
+import tokio_ai
+print(tokio_ai.check_backtest(pf))      # a vectorbt Portfolio, a whole grid included
+print(tokio_ai.check_backtest(stats))   # backtesting.py's Backtest(...).run()
+print(tokio_ai.check_backtest(tokio_ai.read_tradingview("List of trades.csv")))</code></pre>
 
-  <a class="cta" href="https://github.com/jordanahern2009-svg/Tokio-ai">View on GitHub &rarr;</a>
+  <a class="cta" href="https://colab.research.google.com/github/jordanahern2009-svg/Tokio-ai/blob/main/examples/check_your_backtest.ipynb">Try it in Colab &rarr;</a>
+  &nbsp; <a href="https://github.com/jordanahern2009-svg/Tokio-ai">GitHub</a>
 
   <div class="callout">
-    <h2 style="margin-top:0">We tested the tests, and they failed</h2>
-    <p>Most tools that promise statistical rigor never check whether their own statistics work. We ran TokIO on thousands of simulated price series containing <strong>no predictable pattern at all</strong> and counted how often it claimed to find one. A test reporting <code>p&nbsp;&lt;&nbsp;0.05</code> should be wrong 5% of the time.</p>
-    <p>v0.2.0 was wrong up to <strong>45%</strong> of the time. v0.3.0 fixed it &mdash; and the fix showed that this page's own headline example had been a false positive.</p>
-    <p><a href="https://github.com/jordanahern2009-svg/Tokio-ai/blob/main/docs/calibration.md">Read the full study &rarr;</a></p>
+    <h2 style="margin-top:0">The best of 19 SMA crossovers on SPY</h2>
+    <p>Tested alone, the best one is significant: <strong>p&nbsp;=&nbsp;0.038</strong>. Tested with the other eighteen it was picked from: <strong>p&nbsp;=&nbsp;0.12</strong>, haircut Sharpe 0.21, and a probability of backtest overfitting of <strong>0.90</strong>: the in-sample winner did worse than a random pick out of sample in 90% of splits.</p>
   </div>
 
-  <h2>What it can do</h2>
+  <h2>What every result reports</h2>
   <ul>
-    <li>Pull daily price history and SEC filings for any ticker, no API key needed</li>
-    <li>Rank the real S&amp;P 500 by trailing return, optionally filtered by sector &mdash; handles open-ended asks like "what are the best performing stocks" without you having to already know a ticker</li>
-    <li>Test whether a technical condition actually predicts what happens next &mdash; fetch, bucket, and test in one call, not the model eyeballing raw numbers</li>
-    <li>Account for overlapping forward-return windows and volatility-selected conditions, the two ways this kind of test usually lies to you</li>
-    <li>Correct for multiple hypotheses tested in the same session, automatically</li>
-    <li>Runs in a full-screen terminal UI by default &mdash; dark theme, scrollable chat log, no setup beyond the API key</li>
+    <li>A test of the mean that allows for serial dependence (HAC, adaptive window), corrected for every variant you tried (Romano-Wolf step-down, the stepwise form of White's Reality Check)</li>
+    <li>The <strong>Deflated Sharpe Ratio</strong> and <strong>Probabilistic Sharpe Ratio</strong>, as published and corrected for dependence, and the minimum track record length</li>
+    <li>The <strong>probability of backtest overfitting</strong> (CSCV) for grids</li>
+    <li>Costs, turnover and the <strong>breakeven transaction cost</strong></li>
+    <li>A <strong>lookahead check</strong>: the Sharpe with every position taken one bar later</li>
+    <li>Concentration (both tails trimmed), consistency across time, and the minimum backtest length</li>
   </ul>
 
-  <h2>Quickstart</h2>
-  <pre><code>pip install tokio-ai
-cp .env.example .env
-# fill in OPENAI_API_KEY (a free key from build.nvidia.com works out of the box)
-tokio-ai</code></pre>
+  <h2>We measured the tests</h2>
+  <p>How often does each method call a strategy with <em>no edge</em> profitable? At p&nbsp;&lt;&nbsp;0.05 it should be 5%.</p>
+  <table>
+    <tr><th>P&amp;L with no edge</th><th class="n">plain t-test</th><th class="n">published PSR</th><th class="n">TokIO</th></tr>
+    <tr><td>overlapping 20-day trades, simulated</td><td class="n">38%</td><td class="n">38%</td><td class="n"><strong>4&ndash;8%</strong></td></tr>
+    <tr><td>overlapping 20-day trades, 20y of 10 real assets</td><td class="n">30.5%</td><td class="n">&ndash;</td><td class="n"><strong>5.4%</strong></td></tr>
+    <tr><td>best of 50 strategies, 20y of 10 real assets</td><td class="n">83.5%</td><td class="n">&ndash;</td><td class="n"><strong>4.2%</strong></td></tr>
+  </table>
+  <p><a href="https://github.com/jordanahern2009-svg/Tokio-ai/blob/main/docs/calibration.md">The full study, including what broke on the way &rarr;</a></p>
 
-  <h2>A real example</h2>
-  <pre><code>&gt; Test whether AAPL days that gap up more than 2% at the open tend to
-  keep drifting up over the next 5 trading days, using 10 years of history.
+  <h2>Catches lookahead</h2>
+  <pre><code>Rebuilt from its positions (no costs) the Sharpe is 13.26; with every
+position taken one bar later, -0.44. Most of the edge needs same-bar
+execution: check for lookahead (a signal using the bar's own close or
+later) before trusting it.</code></pre>
+  <p>A cheating SPY strategy that every significance test passes (p&nbsp;=&nbsp;0.0000). An honest crossover on the same data keeps its Sharpe a bar later.</p>
 
-Not significant (p=0.089). Over 2016-08-18 to 2026-08-17 there were 76
-days with a gap above 2%, and they averaged -1.29% over the next 5
-trading days versus baseline -- the point estimate leans toward
-gap-fade rather than continuation, but not by enough to separate from
-chance.
+  <h2>On the TradingView chart</h2>
+  <p>Paste <a href="https://github.com/jordanahern2009-svg/Tokio-ai/blob/main/pine/tokio_check.pine">pine/tokio_check.pine</a> under any Pine v6 strategy and the verdict appears as a table on the chart: dependence-corrected p-value, the correction for how many variants you tried, the Deflated Sharpe Ratio, and the minimum track record. Free, no export needed.</p>
 
-Worth flagging: those 76 days have 2.68x the return variance of the
-other 2,430. That is the condition selecting volatile days, and it is
-exactly the case where a naive test overstates significance -- this
-one reported p=0.0042 on the same data before v0.3.0.</code></pre>
-  <p>That second paragraph is the point of the project. The interesting answer wasn't the pattern; it was the reason to distrust the pattern.</p>
+  <h2>Also: a research agent</h2>
+  <p><code>pip install "tokio-ai[agent]"</code> adds an LLM agent that pulls price history and SEC filings and routes every pattern claim through the same tests, correcting for everything asked in the session.</p>
 
   <footer>
-    MIT licensed. <a href="https://github.com/jordanahern2009-svg/Tokio-ai">Source, issues, and contributions welcome on GitHub</a>.
+    MIT licensed. <a href="https://github.com/jordanahern2009-svg/Tokio-ai">Source, issues and contributions on GitHub</a>.
   </footer>
 </div>
 </body>

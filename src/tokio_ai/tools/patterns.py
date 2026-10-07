@@ -11,7 +11,9 @@ model decide what to ask for."
 from __future__ import annotations
 
 from ..check import check
+from ..family import check_many
 from ..rigor.ledger import TestLedger
+from ..rigor.stats import PermutationResult
 from .prices import DailyBar, fetch_daily_bars
 
 FEATURES = ("daily_return", "gap_pct", "volume_ratio")
@@ -126,3 +128,42 @@ def test_return_pattern(
     # fetched -- hand it the real dates so it reports facts, not a guess.
     data_window = f"data window: {bars[0].date} to {bars[-1].date}" if bars else "no data"
     return f"{verdict} ({data_window})"
+
+
+def test_pattern_grid(
+    ledger: TestLedger,
+    symbol: str,
+    feature: str,
+    op: str,
+    thresholds: list[float],
+    horizons: list[int],
+    range_: str = "10y",
+) -> str:
+    """Every threshold at every horizon as one family (tokio_ai.check_many)."""
+    if op not in OPS:
+        raise ValueError(f"unknown op {op!r}, must be one of {list(OPS)}")
+    if not thresholds or not horizons:
+        raise ValueError("thresholds and horizons must each list at least one value")
+    bars = fetch_daily_bars(symbol, range_)
+    returns: list[float | None] = [None] + [
+        (cur.close / prev.close - 1) if prev.close else None for prev, cur in zip(bars, bars[1:])
+    ]
+    values = compute_feature(bars, feature)
+    cmp = OPS[op]
+    grid = {
+        f"{feature}{op}{t}": [None if v is None else bool(cmp(v, t)) for v in values]
+        for t in thresholds
+    }
+    result = check_many(returns, grid, horizon=[int(h) for h in horizons])
+    # Every variant goes into the session ledger too. Otherwise the grid is a
+    # loophole: a variant that fails the grid correction could be re-tested
+    # alone as the session's "first" test and come back significant.
+    for m in result.members:
+        if m.reportable:
+            ledger.record(
+                f"{symbol}_{m.name}".replace(" ", ""),
+                PermutationResult(m.gap, m.p_raw, m.n_condition, m.n_other,
+                                  iters=0, seed=None, statistic="hodrick_hac"),
+            )
+    data_window = f"data window: {bars[0].date} to {bars[-1].date}" if bars else "no data"
+    return f"{symbol} ({data_window})\n{result}"

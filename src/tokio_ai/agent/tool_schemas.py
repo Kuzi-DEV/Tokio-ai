@@ -132,6 +132,43 @@ TOOLS = [
         },
     },
     {
+        "name": "test_pattern_grid",
+        "description": (
+            "Test a whole grid of thresholds and horizons for one technical "
+            "condition at once, corrected for having searched the grid "
+            "(tokio_ai.check_many: Romano-Wolf step-down, family-wise error "
+            "held at 5%). Use this whenever the question is 'which threshold / "
+            "horizon works best' or the user wants several variants compared: "
+            "one grid call is honest, several single test_return_pattern calls "
+            "followed by picking the best one is p-hacking. Report the grid "
+            "verdicts (p grid), and say how many variants would have looked "
+            "significant alone but did not survive the grid."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Ticker symbol, e.g. SPY"},
+                "feature": {
+                    "type": "string",
+                    "enum": ["daily_return", "gap_pct", "volume_ratio"],
+                },
+                "op": {"type": "string", "enum": [">", ">=", "<", "<="]},
+                "thresholds": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "description": "every threshold to try, e.g. [-0.01, -0.02, -0.03]",
+                },
+                "horizons": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "every forward horizon in trading days, e.g. [1, 5, 20]",
+                },
+                "range": {"type": "string", "default": "10y"},
+            },
+            "required": ["symbol", "feature", "op", "thresholds", "horizons"],
+        },
+    },
+    {
         "name": "test_hypothesis",
         "description": (
             "Run a two-sided studentized permutation test comparing two groups of "

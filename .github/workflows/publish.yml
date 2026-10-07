@@ -1,0 +1,60 @@
+name: publish
+
+# Releases go to PyPI through Trusted Publishing: GitHub proves to PyPI which
+# repo and workflow is asking, so no API token exists anywhere to leak.
+# Runs only on a pushed version tag (e.g. v0.4.0), and only after the full
+# test suite passes on that exact commit.
+#
+# One-time setup on pypi.org: project tokio-ai -> Publishing -> add a
+# GitHub publisher (owner jordanahern2009-svg, repo Tokio-ai, workflow
+# publish.yml, environment pypi).
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # A tag that disagrees with the package version would publish the
+      # wrong number to PyPI, where versions can never be reused.
+      - name: Tag must match package version
+        run: |
+          pkg=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          test "v$pkg" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != version v$pkg"; exit 1; }
+      - run: pip install build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

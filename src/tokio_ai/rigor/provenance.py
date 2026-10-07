@@ -7,7 +7,8 @@ import platform
 from importlib.metadata import PackageNotFoundError, version
 
 
-def stamp() -> str:
+def stamp(agent: bool = False) -> str:
+    """Version stamp for a result; `agent=True` adds the openai client's version (the agent's backend)."""
     # The running module's own __version__ is authoritative, NOT the
     # installed distribution metadata. Those disagree whenever the source
     # tree is ahead of the last `pip install` -- which is the normal state
@@ -24,9 +25,11 @@ def stamp() -> str:
     if installed is not None and installed != tokio_version:
         tokio_version = f"{tokio_version} (source; {installed} installed)"
 
-    try:
-        openai_version = version("openai")
-    except PackageNotFoundError:
-        openai_version = "unknown"
-
-    return f"tokio-ai {tokio_version} | Python {platform.python_version()} | openai {openai_version}"
+    out = f"tokio-ai {tokio_version} | Python {platform.python_version()}"
+    if agent:
+        try:
+            openai_version = version("openai")
+        except PackageNotFoundError:
+            openai_version = "unknown"
+        out += f" | openai {openai_version}"
+    return out
