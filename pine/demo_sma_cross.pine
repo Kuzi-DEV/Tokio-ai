@@ -1,5 +1,7 @@
 //@version=6
-// Demo: an SMA crossover with the TokIO check pasted underneath.
+// Demo: a long-only SMA crossover with the TokIO check pasted underneath.
+// On SPY daily it looks significant alone; set "Variants tried" to the 20
+// parameter sets you might have tried and it isn't.
 // To use with your own strategy, paste pine/tokio_check.pine below your code.
 strategy("SMA cross + TokIO check", overlay = true, initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, commission_type = strategy.commission.percent, commission_value = 0.05)
 fastLen = input.int(10, "Fast SMA")
@@ -11,7 +13,7 @@ plot(s, color = color.orange)
 if ta.crossover(f, s)
     strategy.entry("Long", strategy.long)
 if ta.crossunder(f, s)
-    strategy.entry("Short", strategy.short)
+    strategy.close("Long")
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TokIO backtest check for TradingView — paste below your strategy's code.
@@ -41,7 +43,7 @@ if ta.crossunder(f, s)
 tokio_trials = input.int(1, "Variants tried (incl. this one)", minval = 1, group = "TokIO check",
      tooltip = "Every parameter set, indicator or rule you tried before keeping this one. Be honest: the correction is only as good as this number.")
 tokio_alpha = input.float(0.05, "Significance level", minval = 0.001, maxval = 0.5, group = "TokIO check")
-tokio_pos = input.string("bottom_right", "Table position", options = ["top_right", "bottom_right", "bottom_left", "top_left"], group = "TokIO check")
+tokio_pos = input.string("bottom_right", "Table position", options = ["top_left", "top_center", "top_right", "middle_left", "middle_center", "middle_right", "bottom_left", "bottom_center", "bottom_right"], group = "TokIO check")
 
 // Standard normal CDF (Abramowitz & Stegun 7.1.26 erf, |error| < 1.5e-7)
 tokio_cdf(float tk_z) =>
@@ -94,8 +96,17 @@ if barstate.islastconfirmedhistory or (barstate.islast and barstate.isrealtime)
     var table tk_tbl = na
     if not na(tk_tbl)
         table.delete(tk_tbl)
-    tk_pos = tokio_pos == "top_right" ? position.top_right : tokio_pos == "bottom_left" ? position.bottom_left : tokio_pos == "top_left" ? position.top_left : position.bottom_right
-    tk_tbl := table.new(tk_pos, 2, 12, bgcolor = color.new(color.black, 15), border_color = color.gray, border_width = 1, frame_color = color.gray, frame_width = 1)
+    tk_pos = switch tokio_pos
+        "top_left" => position.top_left
+        "top_center" => position.top_center
+        "top_right" => position.top_right
+        "middle_left" => position.middle_left
+        "middle_center" => position.middle_center
+        "middle_right" => position.middle_right
+        "bottom_left" => position.bottom_left
+        "bottom_center" => position.bottom_center
+        => position.bottom_right
+    tk_tbl := table.new(tk_pos, 2, 12, bgcolor = color.new(color.black, 0), border_color = color.gray, border_width = 1, frame_color = color.gray, frame_width = 1)
     tk_txt = color.white
     table.cell(tk_tbl, 0, 0, "TokIO check", text_color = tk_txt, text_size = size.small)
     if tk_n < 60
