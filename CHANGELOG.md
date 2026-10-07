@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 — unreleased
+## 0.5.0 — 2026-10-07
 
 0.4.0 was committed to git but never tagged or published to PyPI, so 0.5.0 is the first
 release to carry everything below and everything in 0.4.0.
