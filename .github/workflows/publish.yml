@@ -6,7 +6,7 @@ name: publish
 # test suite passes on that exact commit.
 #
 # One-time setup on pypi.org: project tokio-ai -> Publishing -> add a
-# GitHub publisher (owner jordanahern2009-svg, repo Tokio-ai, workflow
+# GitHub publisher (owner Kuzi-DEV, repo Tokio-ai, workflow
 # publish.yml, environment pypi).
 
 on:

@@ -1,7 +1,7 @@
 """TokIO AI: an open-source financial research agent that runs every claim
 through honest statistical testing before trusting it."""
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 from .check import CheckResult, check  # noqa: E402  (needs __version__ defined first)
 from .backtest import BacktestResult, check_backtest  # noqa: E402

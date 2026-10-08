@@ -1,12 +1,12 @@
 # TokIO AI
 
-[![tests](https://github.com/jordanahern2009-svg/Tokio-ai/actions/workflows/test.yml/badge.svg)](https://github.com/jordanahern2009-svg/Tokio-ai/actions/workflows/test.yml)
+[![tests](https://github.com/Kuzi-DEV/Tokio-ai/actions/workflows/test.yml/badge.svg)](https://github.com/Kuzi-DEV/Tokio-ai/actions/workflows/test.yml)
 [![PyPI](https://img.shields.io/pypi/v/tokio-ai.svg)](https://pypi.org/project/tokio-ai/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](pyproject.toml)
 [![calibrated](https://img.shields.io/badge/false%20positive%20rate-measured-brightgreen.svg)](docs/calibration.md)
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jordanahern2009-svg/Tokio-ai/blob/main/examples/check_your_backtest.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Kuzi-DEV/Tokio-ai/blob/main/examples/check_your_backtest.ipynb)
 
 **Is your backtest real?** TokIO tells you whether a strategy's profit is
 distinguishable from luck, once you allow for the two things a Sharpe ratio
@@ -50,7 +50,7 @@ backtest did worse than picking at random: the in-sample winner finished at
 or below the median out of sample in 90% of splits.
 ```
 
-**[Run it yourself in Colab, then upload your own backtest →](https://colab.research.google.com/github/jordanahern2009-svg/Tokio-ai/blob/main/examples/check_your_backtest.ipynb)**
+**[Run it yourself in Colab, then upload your own backtest →](https://colab.research.google.com/github/Kuzi-DEV/Tokio-ai/blob/main/examples/check_your_backtest.ipynb)**
 No API key, no account. There's also a CLI for a CSV export:
 `tokio-ai-backtest pnl.csv --trials 40`.
 
@@ -620,7 +620,7 @@ tokio-ai
 ### Developing locally
 
 ```bash
-git clone https://github.com/jordanahern2009-svg/Tokio-ai
+git clone https://github.com/Kuzi-DEV/Tokio-ai
 cd Tokio-ai
 pip install -e ".[dev]"
 python -m pytest       # no API key needed, no network calls

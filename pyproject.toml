@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tokio-ai"
-version = "0.5.0"
+version = "0.5.1"
 description = "Is your backtest real? Deflated Sharpe Ratio, overfitting and lookahead checks with measured false-positive rates. Works with vectorbt, backtesting.py and TradingView."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,10 +30,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://jordanahern2009-svg.github.io/Tokio-ai/"
-Repository = "https://github.com/jordanahern2009-svg/Tokio-ai"
-Documentation = "https://github.com/jordanahern2009-svg/Tokio-ai#readme"
-Issues = "https://github.com/jordanahern2009-svg/Tokio-ai/issues"
+Homepage = "https://kuzi-dev.github.io/Tokio-ai/"
+Repository = "https://github.com/Kuzi-DEV/Tokio-ai"
+Documentation = "https://github.com/Kuzi-DEV/Tokio-ai#readme"
+Issues = "https://github.com/Kuzi-DEV/Tokio-ai/issues"
 
 [project.scripts]
 tokio-ai = "tokio_ai._agent_entry:tui"
