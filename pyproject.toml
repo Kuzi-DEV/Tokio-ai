@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tokio-ai"
-version = "0.5.1"
+version = "0.6.0"
 description = "Is your backtest real? Deflated Sharpe Ratio, overfitting and lookahead checks with measured false-positive rates. Works with vectorbt, backtesting.py and TradingView."
 readme = "README.md"
 requires-python = ">=3.10"
