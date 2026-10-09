@@ -80,6 +80,7 @@ class Lab:
     vs: str = "cash"
     runs: list[Run] = field(default_factory=list, repr=False)
     _keys: dict = field(default_factory=dict, repr=False)
+    _signals: list = field(default_factory=list, repr=False)  # (function, display name), by identity
     _final_done: bool = field(default=False, repr=False)
 
     def __post_init__(self):
@@ -111,7 +112,7 @@ class Lab:
 
     def run(self, signal: Callable, **params) -> Run:
         """Backtest `signal(data, **params)` on the in-sample data; counted as a variant."""
-        name = getattr(signal, "__name__", "signal")
+        name = self._name(signal)
         key = _key(name, params)
         if key in self._keys:  # re-running an identical variant isn't a new trial
             return self.runs[self._keys[key]]
@@ -124,6 +125,26 @@ class Lab:
         self.runs.append(run)
         run.report = self._report([run], trials=len(self.runs))
         return run
+
+    def _name(self, signal) -> str:
+        """A display name unique to this function object: two different signals never share one.
+
+        Keyed on identity, so a lambda, a closure from a factory, or a
+        function redefined in a notebook cell is its own strategy (and its
+        own trials), never mistaken for an earlier one with the same name.
+        """
+        for fn, nm in self._signals:
+            if fn is signal:
+                return nm
+        base = getattr(signal, "__name__", "signal")
+        if base == "<lambda>":
+            base = "lambda"
+        taken = {nm for _, nm in self._signals}
+        nm, k = base, 2
+        while nm in taken:
+            nm, k = f"{base}#{k}", k + 1
+        self._signals.append((signal, nm))
+        return nm
 
     def sweep(self, signal: Callable, **grid) -> list[Run]:
         """Run every combination of the parameter lists given, e.g. fast=[5, 10], slow=[50, 100]."""
@@ -151,7 +172,7 @@ class Lab:
             raise RuntimeError("the holdout has already been used; a second look makes it in-sample. "
                                "Pass force=True to run anyway (the report will say so).")
         pd = _pandas()
-        name = getattr(signal, "__name__", "signal")
+        name = self._name(signal)
         full = self.data
         pos = _positions(pd, signal, full, params, name)
         _assert_no_lookahead(pd, signal, full, params, pos, name)
@@ -176,18 +197,27 @@ class Lab:
         return run.returns - w * run.asset_returns.fillna(0.0)
 
     def _report(self, runs, trials, **kwargs):
+        from dataclasses import replace
+
         from .backtest import check_backtest
 
+        # Under vs="market" the tested series is an excess return; a rebuilt
+        # long-only Sharpe beside it would mix the two, so the delay check is
+        # left out (the lab has tested lookahead directly anyway).
+        assets = (lambda r: r.asset_returns) if self.vs == "cash" else (lambda r: None)
         if len(runs) == 1:
             r = runs[0]
-            res = check_backtest(self._tested(r), positions=r.positions, asset_returns=r.asset_returns,
+            res = check_backtest(self._tested(r), positions=r.positions, asset_returns=assets(r),
                                  trials=trials, periods_per_year=self.periods_per_year, **kwargs)
         else:
             labels = [_label(r) for r in runs]
+            per = {lb: assets(r) for lb, r in zip(labels, runs)}
             res = check_backtest({lb: self._tested(r) for lb, r in zip(labels, runs)},
                                  positions={lb: r.positions for lb, r in zip(labels, runs)},
-                                 asset_returns={lb: r.asset_returns for lb, r in zip(labels, runs)},
+                                 asset_returns=per if self.vs == "cash" else None,
                                  trials=trials, periods_per_year=self.periods_per_year, **kwargs)
+        if res.robustness is not None:
+            res = replace(res, robustness=replace(res.robustness, lookahead_tested=True))
         cost = (self.commission + self.slippage) * 1e4
         res.notes.append(f"Lab: fills at the next bar's open; {cost:.1f} bps per unit traded "
                          f"(commission + slippage) is already charged in these returns; {trials} "

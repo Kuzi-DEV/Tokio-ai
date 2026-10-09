@@ -51,6 +51,7 @@ class Robustness:
     sharpe_delayed: float | None = None  # the same with every position one bar later
     min_backtest_years: float | None = None  # for the trials searched
     trials: int = 1
+    lookahead_tested: bool = False  # set by Lab, whose prefix test has ruled lookahead out
 
     def lines(self) -> list[str]:
         out = []
@@ -70,8 +71,12 @@ class Robustness:
             line = (f"Rebuilt from its positions (no costs) the Sharpe is {self.sharpe_rebuilt:.2f}; "
                     f"with every position taken one bar later, {self.sharpe_delayed:.2f}.")
             if self.sharpe_rebuilt > 0.3 and self.sharpe_delayed < 0.5 * self.sharpe_rebuilt:
-                line += (" Most of the edge needs same-bar execution: check for lookahead (a signal "
-                         "using the bar's own close or later) before trusting it.")
+                if self.lookahead_tested:
+                    line += (" Lookahead is ruled out (the lab tested it), so this edge decays within "
+                             "a bar: it lives or dies on execution speed.")
+                else:
+                    line += (" Most of the edge needs same-bar execution: check for lookahead (a signal "
+                             "using the bar's own close or later) before trusting it.")
             out.append(line)
         if self.min_backtest_years is not None:
             out.append(f"Minimum backtest length for {self.trials} trials at this Sharpe: "

@@ -141,3 +141,33 @@ def test_vs_market_removes_drift():
 def test_costs_note_says_they_are_already_charged():
     run = Lab(_bars(), holdout=0).run(sma_cross)
     assert "already charged in these returns" in str(run.report)
+
+
+def test_different_signals_with_the_same_name_are_different_variants():
+    lab = Lab(_bars(), holdout=0)
+    a = lab.run(lambda d: (d.close > d.close.rolling(10).mean()).astype(float))
+    b = lab.run(lambda d: (d.close < d.close.rolling(10).mean()).astype(float))
+    assert a is not b and len(lab.runs) == 2
+    assert a.name == "lambda" and b.name == "lambda#2"
+    assert len(lab.check().strategies) == 2
+    again = lab.run(a and lab._signals[0][0])  # the same function object: not a new trial
+    assert again is a and len(lab.runs) == 2
+
+
+def test_lab_never_blames_lookahead_it_has_ruled_out():
+    d = _bars(3000, seed=9)
+    # a real but one-bar edge: plant next-session returns on yesterday's up days
+    r = np.random.default_rng(1).standard_normal(len(d)) * 0.01
+    sess = d.close / d.open - 1
+    up = (d.close > d.open).astype(float)
+    d2 = d.copy()
+    d2["close"] = d2["open"] * (1 + sess + 0.004 * up.shift(1).fillna(0) * np.sign(r + 2))
+    run = Lab(d2, holdout=0, commission=0, slippage=0).run(lambda x: (x.close > x.open).astype(float))
+    text = str(run.report)
+    assert "check for lookahead" not in text
+    assert run.report.robustness.lookahead_tested
+
+
+def test_vs_market_has_no_raw_rebuilt_line():
+    run = Lab(_bars(), holdout=0, vs="market").run(sma_cross)
+    assert run.report.robustness.sharpe_rebuilt is None
