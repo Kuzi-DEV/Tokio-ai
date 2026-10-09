@@ -22,6 +22,9 @@ from ..tools.patterns import test_pattern_grid as _test_pattern_grid
 from ..tools.patterns import test_return_pattern as _test_return_pattern
 from ..tools.prices import fetch_daily_bars
 from ..tools.screener import top_performers as _top_performers
+from ..tools.strategy import StrategyBook
+from ..tools.strategy import backtest_strategy as _backtest_strategy
+from ..tools.strategy import final_test_strategy as _final_test_strategy
 from .system_prompt import SYSTEM_PROMPT
 from .tool_schemas import TOOLS, to_openai_format
 
@@ -70,6 +73,7 @@ class Agent:
         self.model = model or os.environ.get("TOKIO_AI_MODEL", DEFAULT_MODEL)
         self.messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
         self.ledger = TestLedger()
+        self.strategies = StrategyBook()  # one Lab per symbol for this conversation
 
         initial_usage = initial_usage or {}
         self.usage = {
@@ -138,6 +142,16 @@ class Agent:
                     tool_input["threshold"],
                     tool_input["horizon_days"],
                     tool_input.get("range", "10y"),
+                )
+            if name == "backtest_strategy":
+                return _backtest_strategy(
+                    self.strategies, tool_input["symbol"], tool_input["name"], tool_input["code"],
+                    tool_input.get("params"), tool_input.get("vs", "cash"),
+                )
+            if name == "final_test_strategy":
+                return _final_test_strategy(
+                    self.strategies, tool_input["symbol"], tool_input["name"], tool_input["code"],
+                    tool_input.get("params"), tool_input.get("vs", "cash"),
                 )
             return f"ERROR: unknown tool {name!r}"
         except Exception as e:  # tool errors go back to the model as text, never crash the loop

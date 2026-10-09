@@ -58,6 +58,7 @@ class Run:
     variant: int  # 1-based index among this lab's variants
     segment: str  # "in-sample" or "holdout"
     report: Any = None  # BacktestResult
+    signal: Any = field(default=None, repr=False)  # the function that produced it
 
     def __str__(self) -> str:
         p = ", ".join(f"{k}={v}" for k, v in self.params.items())
@@ -120,7 +121,7 @@ class Lab:
         pos = _positions(_pandas(), signal, d, params, name)
         _assert_no_lookahead(_pandas(), signal, d, params, pos, name)
         r, held, a, trades = _simulate(d, pos, self.commission + self.slippage)
-        run = Run(name, dict(params), r, held, a, trades, len(self.runs) + 1, "in-sample")
+        run = Run(name, dict(params), r, held, a, trades, len(self.runs) + 1, "in-sample", signal=signal)
         self._keys[key] = len(self.runs)
         self.runs.append(run)
         run.report = self._report([run], trials=len(self.runs))
@@ -158,7 +159,12 @@ class Lab:
             raise ValueError("nothing has been run yet")
         return self._report(self.runs, trials=len(self.runs), **kwargs)
 
-    def final_test(self, signal: Callable, *, force: bool = False, **params) -> Run:
+    def best(self) -> Run:
+        """The variant `check()` reports as strongest (lowest corrected p-value)."""
+        label = self.check().best.name
+        return next(r for r in self.runs if _label(r) == label)
+
+    def final_test(self, signal: Callable | Run, *, force: bool = False, **params) -> Run:
         """The one look at the holdout: the chosen variant on data it has never seen.
 
         Tested alone (trials=1): the search happened in-sample, and this is
@@ -166,6 +172,9 @@ class Lab:
         because a holdout looked at twice is just more in-sample data;
         `force=True` runs it anyway and says so in the report.
         """
+        if isinstance(signal, Run):  # lab.final_test(lab.best())
+            params = {**signal.params, **params}
+            signal = signal.signal
         if self.holdout == 0:
             raise ValueError("this lab has no holdout (holdout=0)")
         if self._final_done and not force:

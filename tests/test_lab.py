@@ -171,3 +171,12 @@ def test_lab_never_blames_lookahead_it_has_ruled_out():
 def test_vs_market_has_no_raw_rebuilt_line():
     run = Lab(_bars(), holdout=0, vs="market").run(sma_cross)
     assert run.report.robustness.sharpe_rebuilt is None
+
+
+def test_best_and_final_test_of_a_run():
+    lab = Lab(_bars(2000), holdout=0.25)
+    lab.sweep(sma_cross, fast=[5, 10], slow=[50, 100])
+    b = lab.best()
+    assert b in lab.runs and b.signal is sma_cross
+    final = lab.final_test(b)
+    assert final.params == b.params and final.segment == "holdout"

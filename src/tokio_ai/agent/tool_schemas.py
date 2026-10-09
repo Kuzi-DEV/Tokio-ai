@@ -200,4 +200,58 @@ TOOLS = [
             "required": ["name", "group_a", "group_b"],
         },
     },
+    {
+        "name": "backtest_strategy",
+        "description": (
+            "Backtest a trading strategy the user describes in plain English. Write it as Python "
+            "defining `def signal(d, fast=10, slow=50):` (parameters with defaults), where `d` is a "
+            "pandas DataFrame of daily bars (columns open, high, low, close, volume; dividend-"
+            "adjusted) and the function returns a pandas Series of target positions, one per row "
+            "of d, between -1 (fully short) and 1 (fully long), 0 = flat. `pd` and `np` are "
+            "already available; no imports. Use only past and current rows (rolling, shift(k) "
+            "with k >= 1, ewm): the lab re-runs the signal on truncated data and REJECTS any "
+            "signal that uses future bars. Positions decided at a bar's close are filled at the "
+            "next open with 10 bps of costs. Pass the parameter values to try in `params` (lists); "
+            "every variant run on a symbol in this conversation is counted and corrected for. "
+            "Returns the lab's verdict on all variants so far."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Ticker, e.g. SPY"},
+                "name": {"type": "string", "description": "Short snake_case strategy name, e.g. sma_cross"},
+                "code": {"type": "string", "description": "Python source defining signal(d, **params)"},
+                "params": {
+                    "type": "object",
+                    "description": "Parameter name -> list of values to try, e.g. {\"fast\": [10, 20], \"slow\": [50, 100]}",
+                },
+                "vs": {
+                    "type": "string",
+                    "enum": ["cash", "market"],
+                    "description": "cash: is the profit above zero? market: did it beat holding the asset at the same exposure? Use market for long-only strategies.",
+                },
+            },
+            "required": ["symbol", "name", "code"],
+        },
+    },
+    {
+        "name": "final_test_strategy",
+        "description": (
+            "The ONE look at the held-out recent data (the last 25%) for a single chosen variant "
+            "of a strategy already run with backtest_strategy (same symbol, name, code and vs). "
+            "Only call this when the user has picked a variant and asks for the out-of-sample "
+            "test; it can be used once per symbol."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string"},
+                "name": {"type": "string"},
+                "code": {"type": "string"},
+                "params": {"type": "object", "description": "The chosen variant, e.g. {\"fast\": 20, \"slow\": 100}"},
+                "vs": {"type": "string", "enum": ["cash", "market"]},
+            },
+            "required": ["symbol", "name", "code"],
+        },
+    },
 ]

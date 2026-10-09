@@ -248,7 +248,7 @@ def sma_cross(d, fast=10, slow=50):     # d: the bars so far; return a position 
 
 lab.sweep(sma_cross, fast=[5, 10, 20, 50], slow=[100, 150, 200])
 print(lab.check())                                  # the best, corrected for all 12 you tried
-print(lab.final_test(sma_cross, fast=50, slow=200)) # one look at data it has never seen
+print(lab.final_test(lab.best()))                   # one look at data it has never seen
 ```
 
 - **Lookahead is tested, not trusted.** After running your signal, the lab
@@ -268,6 +268,14 @@ print(lab.final_test(sma_cross, fast=50, slow=200)) # one look at data it has ne
 - **`vs="market"`** tests whether a strategy beat holding the asset at the
   same average exposure, so a long-only strategy can't pass on the market's
   own rise.
+
+**Or just describe it.** With `pip install "tokio-ai[agent]"`, tell the agent
+"backtest this on SPY: buy when the 20-day average crosses above the 100-day,
+go to cash when it crosses back." It writes the signal (checked before it
+runs: no imports, no file or network access), runs it through a lab that
+lasts the whole conversation, so every variant it tries is counted, and
+explains the verdict. Asked exactly that, it tried 9 lengths against holding
+SPY and answered: not significant.
 
 The engine's returns match vectorbt's to 16 decimal places on 20 years of SPY
 (and to about 1e-6 per bar with fees, from how each charges them).

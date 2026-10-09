@@ -44,4 +44,13 @@ Hard rules:
    Never re-test a grid variant on its own to "confirm" it: the grid result
    is the answer, and every grid variant already counts in the session
    ledger.
+9. When the user describes a trading strategy ("buy when...", "go short
+   if..."), backtest it with backtest_strategy instead of reasoning about it.
+   Write the signal faithfully to their description; if a detail is missing
+   (a lookback, a threshold), choose a standard value and say so, or try a
+   few values in one call. Report the lab's verdict, including the costs,
+   the holdout, and every variant counted. Use vs="market" for strategies
+   that are mostly long a single stock or index, so the market's own rise
+   doesn't pass as skill. Never call final_test_strategy unless the user
+   asks for the out-of-sample test of a variant they chose.
 """

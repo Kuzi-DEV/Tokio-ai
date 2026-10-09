@@ -11,6 +11,14 @@
   vectorbt to 1e-16 per bar without fees. On 400 no-edge markets x 14
   variants: best variant's own p < 0.05 in 20.5%, `lab.check()` 2.8%
   (`scripts/calibration_lab.py`).
+- **Plain-English strategies in the agent.** New tools `backtest_strategy` and
+  `final_test_strategy`: the agent writes `signal(d, **params)` from your
+  description, the code is checked (no imports, dunder access, file, process
+  or network calls; only pd, np and plain builtins), and it runs in a Lab
+  that persists for the conversation, so every variant the agent tries is
+  counted. `lab.best()` and `lab.final_test(run)` for the same flow in code.
+- Colab notebook: a "let TokIO run it" section (sweep vs the market, a
+  lookahead caught, one holdout look).
 - `tokio_ai.load_prices(symbol)`: full daily history from Yahoo (SPY from
   1993), split- and dividend-adjusted. `range=max` could come back silently
   downsampled; an explicit date span doesn't.
