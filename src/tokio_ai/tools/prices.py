@@ -85,6 +85,27 @@ def fetch_daily_bars(symbol: str, range_: str = "10y") -> list[DailyBar]:
     return bars
 
 
+_CHART_URL_SPAN = ("https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+                   "?interval=1d&period1={start}&period2={end}")
+
+
+def fetch_full_daily_bars(symbol: str) -> list[DailyBar]:
+    """All daily bars Yahoo has for `symbol`.
+
+    range=max can come back silently downsampled for old tickers; an explicit
+    period1/period2 span returns true daily bars for the whole history
+    (checked: SPY from 1993, median gap 1 day).
+    """
+    end = int(datetime.now(timezone.utc).timestamp()) + 86400
+    url = _CHART_URL_SPAN.format(symbol=urllib.parse.quote(symbol), start=0, end=end)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        payload = json.loads(r.read())
+    bars = _parse_chart_payload(payload, symbol)
+    _assert_daily_granularity(bars, symbol, "full history")
+    return bars
+
+
 def _assert_daily_granularity(bars: list[DailyBar], symbol: str, range_: str) -> None:
     if len(bars) < 3:
         return

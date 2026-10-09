@@ -232,6 +232,46 @@ no correction flagged something in 40.2% of grids, Holm in 0.5%, and
 `check_many` in 2.6%. [Full grid study
 →](docs/calibration.md#grids-check_many-and-the-cost-of-searching)
 
+## Backtest it here: `tokio_ai.Lab`
+
+Don't have a backtest yet? `Lab` runs one for you, and is built so the usual
+ways a backtest lies can't happen quietly:
+
+```python
+import tokio_ai
+
+lab = tokio_ai.Lab("SPY")              # full daily history from Yahoo, dividend-adjusted
+
+def sma_cross(d, fast=10, slow=50):     # d: the bars so far; return a position per bar, -1..1
+    f, s = d.close.rolling(fast).mean(), d.close.rolling(slow).mean()
+    return (f > s).astype(float)
+
+lab.sweep(sma_cross, fast=[5, 10, 20, 50], slow=[100, 150, 200])
+print(lab.check())                                  # the best, corrected for all 12 you tried
+print(lab.final_test(sma_cross, fast=50, slow=200)) # one look at data it has never seen
+```
+
+- **Lookahead is tested, not trusted.** After running your signal, the lab
+  re-runs it on the data cut off at several random bars. If any earlier
+  position changes when later bars are removed, the signal peeked, and the lab
+  refuses with the exact bar. It catches `shift(-1)`, centered rolling
+  windows, and scaling by full-sample statistics.
+- **Realistic fills.** A position decided at a bar's close is filled at the
+  next bar's open, after the overnight gap. 10 bps of commission plus
+  slippage per unit traded is charged by default (`commission=`, `slippage=`).
+- **It counts your variants for you.** Every run is logged; `lab.check()`
+  corrects for all of them. On 400 simulated markets with no edge, the best of
+  14 variants looked significant on its own 20.5% of the time; `lab.check()`
+  said so 2.8% of the time (`scripts/calibration_lab.py`).
+- **A locked holdout.** The last 25% of the data is invisible to your signal
+  until `lab.final_test()`, which works once.
+- **`vs="market"`** tests whether a strategy beat holding the asset at the
+  same average exposure, so a long-only strategy can't pass on the market's
+  own rise.
+
+The engine's returns match vectorbt's to 16 decimal places on 20 years of SPY
+(and to about 1e-6 per bar with fees, from how each charges them).
+
 ## Check a finished backtest
 
 Most people don't arrive with a condition. They arrive with a column of
@@ -301,7 +341,7 @@ NOT SIGNIFICANT after correcting for 19 trials (Romano-Wolf, using their
 correlation) (p=0.1181, alpha=0.05). Strongest variant: sma10/100.
 Haircut Sharpe after 19 trials: 0.21.
 
-No extra costs charged (returns are taken as already net of any fees); sma10/100 turns over 6.1x a year.
+No costs added here (returns are taken as already net of any fees they include); sma10/100 turns over 6.1x a year.
 Probability of backtest overfitting (CSCV, 12870 splits): 0.91. Picking by
 backtest did worse than picking at random: the in-sample winner finished at
 or below the median out of sample in 91% of splits.
