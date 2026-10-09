@@ -86,7 +86,7 @@
   <p class="tagline">TokIO tells you whether a strategy's profit is distinguishable from luck, once you allow for what a Sharpe ratio hides: P&amp;L that isn't independent from bar to bar, and every variant you tried before this one. Every test it runs has a measured false-positive rate.</p>
 
   <div class="badges">
-    <img src="https://github.com/jordanahern2009-svg/Tokio-ai/actions/workflows/test.yml/badge.svg" alt="tests">
+    <img src="https://github.com/Kuzi-DEV/Tokio-ai/actions/workflows/test.yml/badge.svg" alt="tests">
     <img src="https://img.shields.io/pypi/v/tokio-ai.svg" alt="PyPI">
     <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License">
     <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+">
@@ -99,8 +99,8 @@ print(tokio_ai.check_backtest(pf))      # a vectorbt Portfolio, a whole grid inc
 print(tokio_ai.check_backtest(stats))   # backtesting.py's Backtest(...).run()
 print(tokio_ai.check_backtest(tokio_ai.read_tradingview("List of trades.csv")))</code></pre>
 
-  <a class="cta" href="https://colab.research.google.com/github/jordanahern2009-svg/Tokio-ai/blob/main/examples/check_your_backtest.ipynb">Try it in Colab &rarr;</a>
-  &nbsp; <a href="https://github.com/jordanahern2009-svg/Tokio-ai">GitHub</a>
+  <a class="cta" href="https://colab.research.google.com/github/Kuzi-DEV/Tokio-ai/blob/main/examples/check_your_backtest.ipynb">Try it in Colab &rarr;</a>
+  &nbsp; <a href="https://github.com/Kuzi-DEV/Tokio-ai">GitHub</a>
 
   <div class="callout">
     <h2 style="margin-top:0">The best of 19 SMA crossovers on SPY</h2>
@@ -125,7 +125,7 @@ print(tokio_ai.check_backtest(tokio_ai.read_tradingview("List of trades.csv")))<
     <tr><td>overlapping 20-day trades, 20y of 10 real assets</td><td class="n">30.5%</td><td class="n">&ndash;</td><td class="n"><strong>5.4%</strong></td></tr>
     <tr><td>best of 50 strategies, 20y of 10 real assets</td><td class="n">83.5%</td><td class="n">&ndash;</td><td class="n"><strong>4.2%</strong></td></tr>
   </table>
-  <p><a href="https://github.com/jordanahern2009-svg/Tokio-ai/blob/main/docs/calibration.md">The full study, including what broke on the way &rarr;</a></p>
+  <p><a href="https://github.com/Kuzi-DEV/Tokio-ai/blob/main/docs/calibration.md">The full study, including what broke on the way &rarr;</a></p>
 
   <h2>Catches lookahead</h2>
   <pre><code>Rebuilt from its positions (no costs) the Sharpe is 13.26; with every
@@ -135,13 +135,13 @@ later) before trusting it.</code></pre>
   <p>A cheating SPY strategy that every significance test passes (p&nbsp;=&nbsp;0.0000). An honest crossover on the same data keeps its Sharpe a bar later.</p>
 
   <h2>On the TradingView chart</h2>
-  <p>Paste <a href="https://github.com/jordanahern2009-svg/Tokio-ai/blob/main/pine/tokio_check.pine">pine/tokio_check.pine</a> under any Pine v6 strategy and the verdict appears as a table on the chart: dependence-corrected p-value, the correction for how many variants you tried, the Deflated Sharpe Ratio, and the minimum track record. Free, no export needed.</p>
+  <p>Paste <a href="https://github.com/Kuzi-DEV/Tokio-ai/blob/main/pine/tokio_check.pine">pine/tokio_check.pine</a> under any Pine v6 strategy and the verdict appears as a table on the chart: dependence-corrected p-value, the correction for how many variants you tried, the Deflated Sharpe Ratio, and the minimum track record. Free, no export needed.</p>
 
   <h2>Also: a research agent</h2>
   <p><code>pip install "tokio-ai[agent]"</code> adds an LLM agent that pulls price history and SEC filings and routes every pattern claim through the same tests, correcting for everything asked in the session.</p>
 
   <footer>
-    MIT licensed. <a href="https://github.com/jordanahern2009-svg/Tokio-ai">Source, issues and contributions on GitHub</a>.
+    MIT licensed. <a href="https://github.com/Kuzi-DEV/Tokio-ai">Source, issues and contributions on GitHub</a>.
   </footer>
 </div>
 </body>

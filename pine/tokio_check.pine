@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // TokIO backtest check for TradingView — paste below your strategy's code.
-// https://github.com/jordanahern2009-svg/Tokio-ai   (MIT licence)
+// https://github.com/Kuzi-DEV/Tokio-ai   (MIT licence)
 //
 // Is this strategy's profit distinguishable from luck? Reads the strategy's
 // closed trades and draws a table on the chart with:

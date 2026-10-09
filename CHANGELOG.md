@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1 — 2026-10-08
+
+- The project moved to github.com/Kuzi-DEV/Tokio-ai (homepage kuzi-dev.github.io/Tokio-ai).
+  Old links redirect. No code changes.
+
 ## 0.5.0 — 2026-10-07
 
 0.4.0 was committed to git but never tagged or published to PyPI, so 0.5.0 is the first
