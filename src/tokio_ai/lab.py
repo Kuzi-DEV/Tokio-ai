@@ -118,6 +118,7 @@ class Lab:
         if key in self._keys:  # re-running an identical variant isn't a new trial
             return self.runs[self._keys[key]]
         d = self.in_sample
+        _prefetch(signal, name, d, [params])
         pos = _positions(_pandas(), signal, d, params, name)
         _assert_no_lookahead(_pandas(), signal, d, params, pos, name)
         r, held, a, trades = _simulate(d, pos, self.commission + self.slippage)
@@ -151,7 +152,9 @@ class Lab:
         """Run every combination of the parameter lists given, e.g. fast=[5, 10], slow=[50, 100]."""
         names = list(grid)
         values = [v if isinstance(v, (list, tuple, range)) else [v] for v in grid.values()]
-        return [self.run(signal, **dict(zip(names, combo))) for combo in itertools.product(*values)]
+        combos = [dict(zip(names, combo)) for combo in itertools.product(*values)]
+        _prefetch(signal, self._name(signal), self.in_sample, combos)
+        return [self.run(signal, **p) for p in combos]
 
     def check(self, **kwargs):
         """Every variant run so far, tested together: the honest verdict on the search."""
@@ -183,6 +186,7 @@ class Lab:
         pd = _pandas()
         name = self._name(signal)
         full = self.data
+        _prefetch(signal, name, full, [params])
         pos = _positions(pd, signal, full, params, name)
         _assert_no_lookahead(pd, signal, full, params, pos, name)
         r, held, a, _ = _simulate(full, pos, self.commission + self.slippage)
@@ -286,18 +290,38 @@ def _positions(pd, signal, d, params, name):
     return s
 
 
+def _cut_points(name, params, n, cuts: int = LOOKAHEAD_CUTS) -> list[int]:
+    """Deterministic bars at which the lookahead test cuts the data, spread across the sample."""
+    import numpy as np
+
+    lo = max(20, n // 10)
+    if n - lo < 2:
+        return []
+    seed = int(hashlib.sha1(f"{name}{sorted(params.items())}".encode()).hexdigest()[:8], 16)
+    rng = np.random.default_rng(seed)
+    return sorted(set(rng.integers(lo, n - 1, size=cuts).tolist()) | {n - 2})
+
+
+def _prefetch(signal, name, d, param_sets) -> None:
+    """Tell a sandboxed signal every (params, length) a run will need, so one process serves them all."""
+    pre = getattr(signal, "prefetch", None)
+    if pre is None:
+        return
+    reqs = []
+    for params in param_sets:
+        reqs.append((params, len(d)))
+        reqs.extend((params, c + 1) for c in _cut_points(name, params, len(d)))
+    pre(d, reqs)
+
+
 def _assert_no_lookahead(pd, signal, d, params, pos, name, cuts: int = LOOKAHEAD_CUTS):
     """Re-run on the data cut at several bars; earlier positions must not move."""
     import numpy as np
 
     n = len(d)
-    lo = max(20, n // 10)
-    if n - lo < 2:
+    points = _cut_points(name, params, n, cuts)
+    if not points:
         return
-    # deterministic cut points, spread across the sample
-    seed = int(hashlib.sha1(f"{name}{sorted(params.items())}".encode()).hexdigest()[:8], 16)
-    rng = np.random.default_rng(seed)
-    points = sorted(set(rng.integers(lo, n - 1, size=cuts).tolist()) | {n - 2})
     full = pos.to_numpy(dtype=float)
     for cut in points:
         part = _positions(pd, signal, d.iloc[: cut + 1], params, name).to_numpy(dtype=float)

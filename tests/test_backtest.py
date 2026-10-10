@@ -325,3 +325,9 @@ def test_partial_positions_still_report_turnover_for_the_reported_variant():
     assert res.best.name == "a"
     assert res.turnover_per_year is not None and res.breakeven_cost is None
     assert any("every variant" in n for n in res.notes)
+
+
+def test_a_variant_that_never_trades_is_explained_not_silently_dropped():
+    r = _noise(3000, 11) + 0.0006
+    res = check_backtest({"live": r, "never_trades": np.zeros(3000)})
+    assert "never traded" in str(res)

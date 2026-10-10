@@ -684,6 +684,12 @@ def _score(np, X, names, runs, trials, alpha, periods_per_year, bandwidth, seed,
         R = C / np.outer(sdl, sdl)
         p_adj = _romano_wolf(np, z, R, seed, one_sided=True)
 
+    n_flat = sum(1 for r in rows if r[4])
+    if n_flat and k > 1 and correction == "romano_wolf":
+        notes.append(
+            f"{n_flat} variant(s) never traded (no variation in P&L), so they can't produce a false "
+            f"positive and don't tighten the correction for the others.")
+
     strategies = []
     for j, nm in enumerate(names):
         sharpe, p_naive, p_alone, ac1, flat, skew = rows[j]
