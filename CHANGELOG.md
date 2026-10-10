@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.0 — 2026-10-09
+
+- **`tokio_ai.Lab`: backtest here, honestly.** Write `signal(data, **params)`
+  returning positions; the lab fills them at the next bar's open with
+  commission and slippage, refuses signals that use future data (a prefix
+  re-run test), counts every variant run and corrects for all of them in
+  `lab.check()`, keeps a holdout locked until a single `final_test()`, and can
+  test against exposure-matched buy-and-hold (`vs="market"`). Matches
+  vectorbt to 1e-16 per bar without fees. On 400 no-edge markets x 14
+  variants: best variant's own p < 0.05 in 20.5%, `lab.check()` 2.8%
+  (`scripts/calibration_lab.py`).
+- `lab.best()` and `lab.final_test(run)`: spend the holdout on the strongest variant.
+- Colab notebook: a "let TokIO run it" section (sweep vs the market, a
+  lookahead caught, one holdout look).
+- `tokio_ai.load_prices(symbol)`: full daily history from Yahoo (SPY from
+  1993), split- and dividend-adjusted. `range=max` could come back silently
+  downsampled; an explicit date span doesn't.
+- Clearer wording when a result's returns already include their costs.
+
 ## 0.5.1 — 2026-10-08
 
 - The project moved to github.com/Kuzi-DEV/Tokio-ai (homepage kuzi-dev.github.io/Tokio-ai).

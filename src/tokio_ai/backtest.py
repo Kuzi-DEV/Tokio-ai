@@ -212,8 +212,8 @@ class BacktestResult:
                     f"{self.costs * self.turnover_per_year:.2%} a year."
                 )
             else:
-                out.append(f"No extra costs charged (returns are taken as already net of any fees); "
-                           f"{who} turns over {self.turnover_per_year:.1f}x a year.")
+                out.append(f"No costs added here (returns are taken as already net of any fees they "
+                           f"include); {who} turns over {self.turnover_per_year:.1f}x a year.")
         if self.p_before_costs is not None and self.p_before_costs <= self.alpha < b.p_adjusted:
             out.append(
                 f"Before costs it was significant (p={self.p_before_costs:.4f}). The costs are "
