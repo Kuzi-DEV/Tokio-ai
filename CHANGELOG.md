@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Model-written strategies (the agent's `backtest_strategy` tool) run in an
+  isolated process: empty environment, OS memory/process limits, and an
+  audit-hook allowlist (docs/sandbox.md). **Held back from release until an
+  independent security review.**
+- A result now says when variants never traded and so don't tighten the
+  correction.
+
 ## 0.6.0 — 2026-10-09
 
 - **`tokio_ai.Lab`: backtest here, honestly.** Write `signal(data, **params)`
