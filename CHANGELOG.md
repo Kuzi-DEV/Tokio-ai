@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.7.0 — unreleased
+
+- **`tokio_ai.vol_surface(symbol)`: a 3D implied-volatility surface from free
+  data.** Downloads Cboe's delayed option chain (no key) and computes every
+  vol itself: forwards from put-call parity, out-of-the-money options only,
+  vols at the bid, mid and ask so you can see how much of the shape is
+  spread. `surf.plot()` draws an interactive plotly surface (no
+  extrapolation); `atm_term_structure()`, `smile()`, `grid()` and `points`
+  give the numbers. Matches Cboe's own SPX vols to a median 0.03 vol points.
+- **`tokio_ai.load_put_call(kind)`: daily Cboe put/call volume, 2006 to
+  today, free.** Stitches Cboe's historical CSVs and daily statistics files,
+  caches them on disk, and lists the known definitional breaks in
+  `df.attrs["notes"]`.
+- **MCP server (`tokio-ai-mcp`, `pip install "tokio-ai[mcp]"`)** for Claude Code,
+  Cursor and other assistants: price data, check_backtest, backtest_positions
+  (vs the market by default), check_contracts, vol_surface, put_call. A
+  session ledger corrects every verdict for every variant checked in the
+  session.
+- **Case studies** (`docs/case-studies.md`, scripts in `examples/case_studies/`):
+  put/call sentiment, selling VIX futures, the overnight premium.
+- Colab notebook: section 8, the volatility surface; section 9, testing
+  put/call sentiment with `check_many`.
+
 ## 0.6.0 — 2026-10-09
 
 - **`tokio_ai.Lab`: backtest here, honestly.** Write `signal(data, **params)`

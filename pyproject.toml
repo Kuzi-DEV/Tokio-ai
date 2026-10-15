@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tokio-ai"
-version = "0.6.0"
+version = "0.7.0"
 description = "Is your backtest real? Deflated Sharpe Ratio, overfitting and lookahead checks with measured false-positive rates. Works with vectorbt, backtesting.py and TradingView."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,11 +39,16 @@ Issues = "https://github.com/Kuzi-DEV/Tokio-ai/issues"
 tokio-ai = "tokio_ai._agent_entry:tui"
 tokio-ai-plain = "tokio_ai._agent_entry:plain"
 tokio-ai-backtest = "tokio_ai.backtest_cli:main"
+tokio-ai-mcp = "tokio_ai.mcp_server:main"
 
 [project.optional-dependencies]
 # The LLM research agent (tokio-ai / tokio-ai-plain). The statistics need only numpy.
 agent = ["openai>=1.50.0", "textual>=0.60.0"]
 dev = ["pytest>=8.0", "openai>=1.50.0", "textual>=0.60.0"]
+# MCP server for Claude Code, Cursor and other AI assistants (tokio-ai-mcp)
+mcp = ["mcp>=1.2", "pandas", "plotly"]
+# 3D plots for tokio_ai.vol_surface(...).plot()
+plot = ["pandas", "plotly"]
 # Only for the comparison scripts (calibration_check.py, benchmark.py), which
 # run the tests TokIO is measured against.
 calibration = ["scipy", "statsmodels", "arch"]
