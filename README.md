@@ -638,6 +638,23 @@ conds = {"fear": (z > 1.5).where(z.notna()), "calm": (z < -1.5).where(z.notna())
 print(tokio_ai.check_many(r, conds, horizon=[1, 5, 20]))
 ```
 
+## Use it from Claude Code, Cursor or any AI assistant (MCP)
+
+```bash
+pip install "tokio-ai[mcp]"
+claude mcp add tokio -- tokio-ai-mcp        # Claude Code; other MCP clients: command "tokio-ai-mcp"
+```
+
+Your assistant does the research in its own code; TokIO checks the results. Tools:
+`get_prices`, `check_backtest`, `backtest_positions` (costs, next-day fills, tested
+**against holding the market** by default, lookahead check), `check_contracts`,
+`vol_surface`, `put_call`, `session_trials`, `reset_session`.
+
+**It counts every test.** The server keeps a ledger of every variant checked in the
+session, and each verdict is corrected for all of them. An assistant that tries fifteen
+ideas one at a time and reports the one that "worked" gets a verdict that knows about
+the other fourteen. `session_trials` shows the ledger.
+
 ## Case studies
 
 [docs/case-studies.md](docs/case-studies.md) tests famous market claims with the same
