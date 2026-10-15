@@ -575,6 +575,46 @@ expiry.
 `check_backtest` now warns when a P&L is shaped like this (skewness below
 −2) and points here.
 
+## Options: a 3D implied-volatility surface, measured honestly
+
+```python
+import tokio_ai
+
+surf = tokio_ai.vol_surface("SPY")   # also "SPX", "AAPL", ...: Cboe's free delayed chain, no key
+print(surf)
+surf.plot()                          # interactive 3D surface (needs plotly; Colab has it)
+```
+
+```
+SPY implied-volatility surface  (Cboe delayed quotes, 2026-10-15 11:53 New York, spot 768.12)
+4740 out-of-the-money options across 31 expiries (1-792 days). IVs computed here from bid/mid/ask, not taken from the vendor.
+ATM vol: 7d 12.6%, 29d 13.5%, 92d 14.2%, 167d 15.1%, 350d 17.0%
+Skew (29d, one standard deviation each side): downside 17.3% vs upside 10.9% (+6.3 vol points).
+Bid-ask vol width: median 0.1 vol points; none wider than 5.
+Discount rate 4.00% (13-week T-bill); forwards from put-call parity, so no dividend assumption.
+```
+
+Every vol is computed here, not copied from the feed:
+
+- **Forwards from put-call parity** (C − P = D·(F − K) on the strikes nearest
+  the money), so no dividend guess is needed. For European index options
+  (SPX, NDX, RUT, ...) the discount rate comes from parity too; for American
+  equity options early exercise bends parity, so the 13-week T-bill rate is
+  used instead. Pass `rate=` to override.
+- **Out-of-the-money options only** (puts below the forward, calls above).
+- **Three vols per option: bid, mid and ask.** The bid-ask vol width says how
+  much of the surface's shape is information and how much is spread. Wide
+  wings are counted in the output, not hidden.
+- **No extrapolation.** The plotted surface interpolates in total variance
+  (σ²T) and leaves cells nobody quoted empty.
+
+On SPX our vols match Cboe's own to a median 0.03 vol points; on SPY and AAPL
+to ~0.3 (American options, where Black-76 is an approximation; stated in the
+output). `surf.points` is a DataFrame of every option used (strike, expiry,
+k = ln(K/F), iv, iv_bid, iv_ask, open interest, volume), and
+`surf.atm_term_structure()`, `surf.smile(expiry)` and `surf.grid()` give the
+usual views.
+
 ## Why this exists
 
 Generic LLM agents are commoditized -- anyone can wrap an LLM in a chat loop
