@@ -9,7 +9,12 @@
   spread. `surf.plot()` draws an interactive plotly surface (no
   extrapolation); `atm_term_structure()`, `smile()`, `grid()` and `points`
   give the numbers. Matches Cboe's own SPX vols to a median 0.03 vol points.
-- Colab notebook: section 8, the volatility surface.
+- **`tokio_ai.load_put_call(kind)`: daily Cboe put/call volume, 2006 to
+  today, free.** Stitches Cboe's historical CSVs and daily statistics files,
+  caches them on disk, and lists the known definitional breaks in
+  `df.attrs["notes"]`.
+- Colab notebook: section 8, the volatility surface; section 9, testing
+  put/call sentiment with `check_many`.
 
 ## 0.6.0 — 2026-10-09
 

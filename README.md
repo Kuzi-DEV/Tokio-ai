@@ -615,6 +615,29 @@ k = ln(K/F), iv, iv_bid, iv_ask, open interest, volume), and
 `surf.atm_term_structure()`, `surf.smile(expiry)` and `surf.grid()` give the
 usual views.
 
+## Options sentiment: 20 years of put/call volume, free
+
+```python
+pcr = tokio_ai.load_put_call("equity")   # also "index", "total" (from 2006); "etp", "vix", "spx" (from 2019)
+pcr.tail()                                # call, put, ratio, source
+```
+
+Cboe's public files, stitched and cached (`~/.tokio_ai/cache`): the first
+call downloads ~1,800 small daily files, later calls are instant. Two known
+breaks (2012-06-11, ETPs removed; 2019-10-07, source change) are listed in
+`pcr.attrs["notes"]`, so compare a day with its own recent history rather
+than raw levels. To ask whether it predicts anything, build conditions and
+hand them to `check_many` (see notebook section 9):
+
+```python
+spy = tokio_ai.load_prices("SPY")
+r = spy["close"].pct_change()
+x = np.log(pcr["ratio"])
+z = ((x - x.shift(1).rolling(252).mean()) / x.shift(1).rolling(252).std()).reindex(r.index).shift(1)
+conds = {"fear": (z > 1.5).where(z.notna()), "calm": (z < -1.5).where(z.notna())}
+print(tokio_ai.check_many(r, conds, horizon=[1, 5, 20]))
+```
+
 ## Why this exists
 
 Generic LLM agents are commoditized -- anyone can wrap an LLM in a chat loop
