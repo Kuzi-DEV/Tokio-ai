@@ -638,6 +638,13 @@ conds = {"fear": (z > 1.5).where(z.notna()), "calm": (z < -1.5).where(z.notna())
 print(tokio_ai.check_many(r, conds, horizon=[1, 5, 20]))
 ```
 
+## Case studies
+
+[docs/case-studies.md](docs/case-studies.md) tests famous market claims with the same
+rules: put/call sentiment (0 of 18 variants survive), selling VIX futures (earns, but
+it's SPY in disguise: alpha −3.3%/yr) and the overnight premium (real, but trails buy
+and hold after costs). Each one is reproducible from `examples/case_studies/`.
+
 ## Why this exists
 
 Generic LLM agents are commoditized -- anyone can wrap an LLM in a chat loop

@@ -13,6 +13,8 @@
   today, free.** Stitches Cboe's historical CSVs and daily statistics files,
   caches them on disk, and lists the known definitional breaks in
   `df.attrs["notes"]`.
+- **Case studies** (`docs/case-studies.md`, scripts in `examples/case_studies/`):
+  put/call sentiment, selling VIX futures, the overnight premium.
 - Colab notebook: section 8, the volatility surface; section 9, testing
   put/call sentiment with `check_many`.
 
