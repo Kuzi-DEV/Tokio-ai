@@ -4,145 +4,378 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TokIO: is your backtest real?</title>
-<meta name="description" content="Is your backtest real? Deflated Sharpe Ratio, backtest overfitting (PBO) and lookahead checks with measured false-positive rates. Works with vectorbt, backtesting.py and TradingView.">
+<meta name="description" content="Is your backtest real? Deflated Sharpe Ratio, backtest overfitting (PBO) and lookahead checks with measured false-positive rates. Works with vectorbt, backtesting.py, TradingView and Claude Code.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@200;300;500&family=Barlow:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    color-scheme: light dark;
-    --bg: #ffffff;
-    --fg: #1a1a1a;
-    --muted: #5a5a5a;
-    --accent: #0a5c36;
-    --code-bg: #f4f4f4;
-    --border: #e2e2e2;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0d1117;
-      --fg: #e6edf3;
-      --muted: #9198a1;
-      --accent: #3fb950;
-      --code-bg: #161b22;
-      --border: #30363d;
-    }
+    color-scheme: dark;
+    --bg: #0b0c0f;
+    --panel: #111216;
+    --panel-2: #0e0f12;
+    --line: #2a2b30;
+    --rule: #1e1f23;
+    --fg: #ededE8;
+    --body: #b9b9b3;
+    --muted: #9a9a94;
+    --faint: #6e6e69;
+    --accent: #ff5b1f;
+    --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+    --sans: Barlow, system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--fg);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    line-height: 1.6;
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 17px; line-height: 1.55; }
+  a { color: var(--fg); }
+  a:hover { color: var(--accent); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 32px; }
+  .mono { font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; font-size: 12px; }
+  .label { font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; color: var(--muted); }
+  .accent { color: var(--accent); }
+  h1, h2, h3 { font-family: var(--display); margin: 0; }
+  h2 { font-weight: 200; font-size: clamp(44px, 6vw, 80px); line-height: 1; }
+  h3 { font-weight: 300; font-size: 32px; line-height: 1.05; }
+  p { margin: 0; }
+  section { border-top: 1px solid var(--rule); padding: 96px 0; }
+  .stack { display: flex; flex-direction: column; gap: 36px; }
+  .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 14px 22px; text-decoration: none; font-family: var(--mono); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
+  .btn-primary { background: var(--accent); color: var(--bg); }
+  .btn-primary:hover { color: var(--bg); background: #ff7a45; }
+  .btn-ghost { border: 1px solid #3a3b40; }
+  .panel { border: 1px solid var(--line); background: var(--panel); }
+  code, pre { font-family: var(--mono); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* banner + nav */
+  .banner { background: var(--accent); color: var(--bg); }
+  .banner .wrap { display: flex; justify-content: center; gap: 12px; padding-top: 8px; padding-bottom: 8px; flex-wrap: wrap; }
+  .banner a { color: var(--bg); }
+  nav.wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 22px; padding-bottom: 22px; flex-wrap: wrap; }
+  .logo { text-decoration: none; display: flex; align-items: baseline; gap: 10px; }
+  .logo b { font-family: var(--display); font-weight: 500; font-size: 30px; letter-spacing: .04em; }
+  .nav-links { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; }
+  .nav-links a { text-decoration: none; }
+  .nav-links .get { color: var(--bg); background: var(--fg); padding: 12px 18px; min-height: 44px; display: inline-flex; align-items: center; }
+
+  /* hero */
+  .hero { display: flex; flex-wrap: wrap; gap: 48px; align-items: center; padding: 72px 32px 96px; border: 0; }
+  .hero-copy { flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 28px; }
+  .hero h1 { font-weight: 200; font-size: clamp(64px, 9vw, 128px); line-height: .92; letter-spacing: -.01em; }
+  .lede { max-width: 540px; font-size: 19px; color: var(--body); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .install { max-width: 600px; }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 0 18px; min-height: 44px; cursor: pointer; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+  .tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+  .cmd { display: flex; align-items: center; gap: 12px; padding: 16px 18px; }
+  .cmd pre { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 14px; overflow-x: auto; white-space: pre; }
+  .cmd pre span { color: var(--accent); }
+  .copy { background: none; border: 1px solid #3a3b40; color: var(--fg); width: 44px; height: 44px; flex: 0 0 44px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+  .copy:hover { border-color: var(--accent); }
+
+  .verdict { flex: 1 1 400px; min-width: 0; padding: 36px; display: flex; flex-direction: column; gap: 22px; }
+  .verdict .top { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .pvals { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+  .pvals div { display: flex; flex-direction: column; }
+  .big { font-family: var(--display); font-weight: 200; font-size: 88px; line-height: 1; }
+  .struck { color: var(--faint); text-decoration: line-through; text-decoration-thickness: 2px; }
+  .arrow { font-family: var(--display); font-weight: 200; font-size: 56px; line-height: 1.3; color: var(--faint); }
+  .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .stats div { background: var(--panel); padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+  .stats span:last-child { font-family: var(--mono); font-size: 15px; }
+  .note { font-size: 14px; color: var(--muted); }
+
+  .heading-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
+  .heading-row p { max-width: 400px; color: var(--body); }
+
+  /* terminal */
+  .term { border: 1px solid var(--line); background: var(--panel-2); }
+  .term-bar { display: flex; align-items: center; gap: 16px; padding: 12px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .term-bar .label:last-child { margin-left: auto; }
+  .term-body { display: flex; flex-wrap: wrap; }
+  .term-side { flex: 0 0 220px; border-right: 1px solid var(--line); padding: 20px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .term-side .on { color: var(--accent); font-size: 14px; }
+  .term-side .off { color: var(--muted); font-size: 14px; }
+  .term-side code { font-size: 12px; color: var(--muted); }
+  .term-main { flex: 999 1 560px; min-width: 0; padding: 28px; display: flex; flex-direction: column; gap: 22px; font-family: var(--mono); font-size: 14px; line-height: 1.7; }
+  .msg { display: flex; gap: 12px; }
+  .msg b { font-weight: 400; flex: 0 0 auto; }
+  .result { border: 1px solid var(--line); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; background: var(--panel); color: var(--body); white-space: pre-wrap; }
+  .prompt { display: flex; gap: 12px; align-items: center; border-top: 1px solid var(--line); padding-top: 18px; color: var(--faint); }
+
+  /* cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+  .card { padding: 36px; display: flex; flex-direction: column; gap: 16px; text-decoration: none; }
+  .card p { color: var(--body); }
+  .card .more { margin-top: auto; color: var(--accent); min-height: 44px; display: inline-flex; align-items: center; }
+  .card h3 { font-size: 44px; line-height: 1; }
+  .card pre { margin: 0; padding: 14px 16px; background: var(--panel-2); border: 1px solid var(--line); font-size: 13px; overflow-x: auto; color: var(--fg); }
+
+  /* proof */
+  .split { display: flex; flex-wrap: wrap; gap: 48px; }
+  .split > div { flex: 1 1 400px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+  .split p { color: var(--body); }
+  .bars { display: flex; flex-direction: column; gap: 26px; }
+  .bar-group { display: flex; flex-direction: column; gap: 10px; }
+  .bar { display: grid; grid-template-columns: 110px 1fr 64px; align-items: center; gap: 14px; font-size: 15px; }
+  .bar .track { height: 10px; background: #1a1b1f; }
+  .bar .fill { height: 10px; background: #4a4b50; }
+  .bar.us .fill { background: var(--accent); }
+  .bar .v { font-family: var(--mono); text-align: right; }
+  .target { font-size: 13px; color: var(--faint); }
+
+  /* features */
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .grid > div { background: var(--bg); padding: 32px; display: flex; flex-direction: column; gap: 10px; }
+  .grid code { font-size: 13px; color: var(--accent); }
+  .grid p { color: var(--body); font-size: 15px; }
+
+  .community .card { min-height: 190px; border: 1px solid var(--line); padding: 32px; gap: 10px; }
+  .community .card h3 { font-size: 32px; color: var(--fg); }
+  .soon { opacity: .7; }
+
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; padding-top: 28px; padding-bottom: 28px; flex-wrap: wrap; }
+  footer { border-top: 1px solid var(--rule); }
+  footer a { color: var(--muted); }
+
+  @media (max-width: 960px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 720px) {
+    .grid { grid-template-columns: minmax(0, 1fr); }
+    .wrap { padding: 0 16px; }
+    .hero { padding: 48px 16px 72px; }
+    .hide-sm { display: none !important; }
+    section { padding: 72px 0; }
+    .verdict { padding: 24px; }
+    .big { font-size: 64px; }
+    .card { padding: 24px; }
+    .bar { grid-template-columns: 90px 1fr 56px; }
   }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 4rem 1.5rem 6rem; }
-  h1 { font-size: 2.1rem; margin: 0 0 0.5rem; }
-  .tagline { color: var(--muted); font-size: 1.15rem; margin: 0 0 2rem; }
-  .badges { margin-bottom: 2rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
-  .badges img { height: 20px; }
-  p { margin: 1rem 0; }
-  code, pre {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.9em;
-  }
-  pre {
-    background: var(--code-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    overflow-x: auto;
-  }
-  code { background: var(--code-bg); padding: 0.15em 0.4em; border-radius: 4px; }
-  pre code { background: none; padding: 0; }
-  ul { padding-left: 1.3rem; }
-  li { margin: 0.4rem 0; }
-  h2 { font-size: 1.3rem; margin-top: 2.5rem; }
-  .cta {
-    display: inline-block;
-    margin-top: 1rem;
-    padding: 0.65rem 1.3rem;
-    background: var(--accent);
-    color: #fff;
-    text-decoration: none;
-    border-radius: 8px;
-    font-weight: 600;
-  }
-  footer { margin-top: 4rem; color: var(--muted); font-size: 0.85rem; }
-  a { color: var(--accent); }
-  .callout {
-    margin-top: 2.5rem;
-    padding: 1.1rem 1.3rem;
-    border: 1px solid var(--accent);
-    border-radius: 10px;
-    background: rgba(127, 127, 127, 0.06);
-  }
-  .callout p:last-child { margin-bottom: 0; }
-  table { border-collapse: collapse; width: 100%; font-size: 0.95em; }
-  th, td { border-bottom: 1px solid var(--border); padding: 0.4rem 0.5rem; text-align: left; }
-  td.n, th.n { text-align: right; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Is your backtest real?</h1>
-  <p class="tagline">TokIO tells you whether a strategy's profit is distinguishable from luck, once you allow for what a Sharpe ratio hides: P&amp;L that isn't independent from bar to bar, and every variant you tried before this one. Every test it runs has a measured false-positive rate.</p>
 
-  <div class="badges">
-    <img src="https://github.com/Kuzi-DEV/Tokio-ai/actions/workflows/test.yml/badge.svg" alt="tests">
-    <img src="https://img.shields.io/pypi/v/tokio-ai.svg" alt="PyPI">
-    <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License">
-    <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+">
+<div class="banner">
+  <div class="wrap">
+    <span class="mono">v0.7.0: TokIO now runs inside Claude Code</span>
+    <a class="mono" href="#install">Install &rarr;</a>
   </div>
-
-  <pre><code>pip install tokio-ai
-
-import tokio_ai
-print(tokio_ai.check_backtest(pf))      # a vectorbt Portfolio, a whole grid included
-print(tokio_ai.check_backtest(stats))   # backtesting.py's Backtest(...).run()
-print(tokio_ai.check_backtest(tokio_ai.read_tradingview("List of trades.csv")))</code></pre>
-
-  <a class="cta" href="https://colab.research.google.com/github/Kuzi-DEV/Tokio-ai/blob/main/examples/check_your_backtest.ipynb">Try it in Colab &rarr;</a>
-  &nbsp; <a href="https://github.com/Kuzi-DEV/Tokio-ai">GitHub</a>
-
-  <div class="callout">
-    <h2 style="margin-top:0">The best of 19 SMA crossovers on SPY</h2>
-    <p>Tested alone, the best one is significant: <strong>p&nbsp;=&nbsp;0.038</strong>. Tested with the other eighteen it was picked from: <strong>p&nbsp;=&nbsp;0.12</strong>, haircut Sharpe 0.21, and a probability of backtest overfitting of <strong>0.90</strong>: the in-sample winner did worse than a random pick out of sample in 90% of splits.</p>
-  </div>
-
-  <h2>What every result reports</h2>
-  <ul>
-    <li>A test of the mean that allows for serial dependence (HAC, adaptive window), corrected for every variant you tried (Romano-Wolf step-down, the stepwise form of White's Reality Check)</li>
-    <li>The <strong>Deflated Sharpe Ratio</strong> and <strong>Probabilistic Sharpe Ratio</strong>, as published and corrected for dependence, and the minimum track record length</li>
-    <li>The <strong>probability of backtest overfitting</strong> (CSCV) for grids</li>
-    <li>Costs, turnover and the <strong>breakeven transaction cost</strong></li>
-    <li>A <strong>lookahead check</strong>: the Sharpe with every position taken one bar later</li>
-    <li>Concentration (both tails trimmed), consistency across time, and the minimum backtest length</li>
-  </ul>
-
-  <h2>We measured the tests</h2>
-  <p>How often does each method call a strategy with <em>no edge</em> profitable? At p&nbsp;&lt;&nbsp;0.05 it should be 5%.</p>
-  <table>
-    <tr><th>P&amp;L with no edge</th><th class="n">plain t-test</th><th class="n">published PSR</th><th class="n">TokIO</th></tr>
-    <tr><td>overlapping 20-day trades, simulated</td><td class="n">38%</td><td class="n">38%</td><td class="n"><strong>4&ndash;8%</strong></td></tr>
-    <tr><td>overlapping 20-day trades, 20y of 10 real assets</td><td class="n">30.5%</td><td class="n">&ndash;</td><td class="n"><strong>5.4%</strong></td></tr>
-    <tr><td>best of 50 strategies, 20y of 10 real assets</td><td class="n">83.5%</td><td class="n">&ndash;</td><td class="n"><strong>4.2%</strong></td></tr>
-  </table>
-  <p><a href="https://github.com/Kuzi-DEV/Tokio-ai/blob/main/docs/calibration.md">The full study, including what broke on the way &rarr;</a></p>
-
-  <h2>Catches lookahead</h2>
-  <pre><code>Rebuilt from its positions (no costs) the Sharpe is 13.26; with every
-position taken one bar later, -0.44. Most of the edge needs same-bar
-execution: check for lookahead (a signal using the bar's own close or
-later) before trusting it.</code></pre>
-  <p>A cheating SPY strategy that every significance test passes (p&nbsp;=&nbsp;0.0000). An honest crossover on the same data keeps its Sharpe a bar later.</p>
-
-  <h2>On the TradingView chart</h2>
-  <p>Paste <a href="https://github.com/Kuzi-DEV/Tokio-ai/blob/main/pine/tokio_check.pine">pine/tokio_check.pine</a> under any Pine v6 strategy and the verdict appears as a table on the chart: dependence-corrected p-value, the correction for how many variants you tried, the Deflated Sharpe Ratio, and the minimum track record. Free, no export needed.</p>
-
-  <h2>Also: a research agent</h2>
-  <p><code>pip install "tokio-ai[agent]"</code> adds an LLM agent that pulls price history and SEC filings and routes every pattern claim through the same tests, correcting for everything asked in the session.</p>
-
-  <footer>
-    MIT licensed. <a href="https://github.com/Kuzi-DEV/Tokio-ai">Source, issues and contributions on GitHub</a>.
-  </footer>
 </div>
+
+<nav class="wrap" aria-label="Main">
+  <a class="logo" href="#top"><b>TOKIO</b><span class="label">AI</span></a>
+  <div class="nav-links">
+    <a class="mono hide-sm" href="#features">Features</a>
+    <a class="mono hide-sm" href="#proof">Calibration</a>
+    <a class="mono hide-sm" href="https://github.com/Kuzi-DEV/Tokio-ai">GitHub</a>
+    <a class="mono get" href="#install">Get TokIO</a>
+  </div>
+</nav>
+
+<main id="top">
+<div class="wrap hero">
+  <div class="hero-copy">
+    <span class="mono accent">Backtest checker &middot; open source</span>
+    <h1>Is it real,<br>or is it luck?</h1>
+    <p class="lede">TokIO tells you whether a strategy's profit is distinguishable from luck, once you allow for what a Sharpe ratio hides: P&amp;L that isn't independent from bar to bar, and every variant you tried before this one. Every test it runs has a measured false-positive rate.</p>
+    <div class="row">
+      <a class="btn btn-primary" href="https://colab.research.google.com/github/Kuzi-DEV/Tokio-ai/blob/main/examples/check_your_backtest.ipynb">Try it in Colab</a>
+      <a class="btn btn-ghost" href="https://github.com/Kuzi-DEV/Tokio-ai">View on GitHub</a>
+    </div>
+
+    <div class="panel install" id="install">
+      <div class="tabs" role="tablist" aria-label="Install">
+        <button type="button" role="tab" aria-selected="true" data-cmd="pip install tokio-ai">Python</button>
+        <button type="button" role="tab" aria-selected="false" data-cmd="claude plugin install tokio-ai --marketplace Kuzi-DEV/tokio-plugin">Claude Code</button>
+        <button type="button" role="tab" aria-selected="false" data-cmd='pip install "tokio-ai[mcp]"&#10;claude mcp add tokio -- tokio-ai-mcp'>MCP server</button>
+        <button type="button" role="tab" aria-selected="false" data-cmd='pip install "tokio-ai[agent]"'>Agent</button>
+      </div>
+      <div class="cmd" role="tabpanel">
+        <pre id="cmd"><span>$ </span>pip install tokio-ai</pre>
+        <button type="button" class="copy" id="copy" aria-label="Copy install command">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="12" height="12"></rect><path d="M5 15H3V3h12v2"></path></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel verdict">
+    <div class="top">
+      <span class="label">Verdict &middot; SPY &middot; 19 SMA crossovers</span>
+      <span class="label accent">Not significant</span>
+    </div>
+    <div class="pvals">
+      <div><span class="label">Best one, tested alone</span><span class="big struck">p .038</span></div>
+      <span class="arrow" aria-hidden="true">&rarr;</span>
+      <div><span class="label">With the other 18</span><span class="big accent">p .12</span></div>
+    </div>
+    <div class="stats">
+      <div><span class="label">Haircut Sharpe</span><span>0.21</span></div>
+      <div><span class="label">Prob. of overfitting</span><span>0.90</span></div>
+    </div>
+    <p class="note">Real daily SPY data. The in-sample winner did worse than a random pick out of sample in 90% of splits.</p>
+  </div>
+</div>
+
+<section id="terminal">
+  <div class="wrap stack">
+    <div class="heading-row">
+      <h2>Your terminal.<br>With a skeptic built in.</h2>
+      <p>Ask in plain English. The agent pulls the data, runs the test, and logs every attempt in the session ledger, so the ones that failed still count against the one that worked.</p>
+    </div>
+    <div class="term" aria-label="Example TokIO session">
+      <div class="term-bar">
+        <span class="label">tokio &middot; session</span>
+        <span class="label">Web terminal in development</span>
+      </div>
+      <div class="term-body">
+        <div class="term-side hide-sm">
+          <span class="label" style="color:var(--faint)">Tools</span>
+          <code>check_backtest</code>
+          <code>backtest_positions</code>
+          <code>check_contracts</code>
+          <code>vol_surface</code>
+          <code>get_prices</code>
+          <code>session_trials</code>
+        </div>
+        <div class="term-main">
+          <div class="msg"><b class="accent">you</b><span>Try every SMA crossover from 10/30 to 50/200 on SPY. Does the best one work?</span></div>
+          <div class="msg"><b style="color:var(--muted)">tokio</b><span style="color:var(--body)">Ran 19 variants on daily SPY and checked them together.</span></div>
+          <div class="result"><span class="accent">VERDICT  not significant after 19 variants</span>
+best alone        p 0.038
+with the other 18 p 0.12
+haircut Sharpe    0.21
+prob. overfitting 0.90</div>
+          <div class="prompt"><span class="accent">&rsaquo;</span><span>Ask about any ticker, signal or backtest&hellip;</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap stack">
+    <h2>Use it where you work.</h2>
+    <div class="cards">
+      <div class="panel card">
+        <span class="mono accent">01 &middot; Python</span>
+        <h3>In your notebook</h3>
+        <p>Hand it a vectorbt Portfolio (a whole grid included), backtesting.py stats, or a P&amp;L series.</p>
+<pre>import tokio_ai
+print(tokio_ai.check_backtest(pf))</pre>
+        <a class="mono more" href="https://colab.research.google.com/github/Kuzi-DEV/Tokio-ai/blob/main/examples/check_your_backtest.ipynb">Open the Colab &rarr;</a>
+      </div>
+      <div class="panel card">
+        <span class="mono accent">02 &middot; AI assistants</span>
+        <h3>In Claude Code</h3>
+        <p>An MCP server: ask the assistant to test an idea and it checks the result before it tells you it works.</p>
+        <a class="mono more" href="https://github.com/Kuzi-DEV/tokio-plugin">The plugin &rarr;</a>
+      </div>
+      <div class="panel card">
+        <span class="mono accent">03 &middot; TradingView</span>
+        <h3>On your chart</h3>
+        <p>Paste one Pine v6 script under any strategy and the verdict appears as a table on the chart. No export needed.</p>
+        <a class="mono more" href="https://github.com/Kuzi-DEV/Tokio-ai/blob/main/pine/tokio_check.pine">tokio_check.pine &rarr;</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="proof">
+  <div class="wrap split">
+    <div>
+      <span class="mono accent">Calibration</span>
+      <h2>We test the tester.</h2>
+      <p>How often does each method call a strategy with <em>no edge</em> profitable? At p&nbsp;&lt;&nbsp;0.05 it should be 5%. We measured it, including on 20 years of real data, and published the table.</p>
+      <a class="mono more accent" style="min-height:44px;display:inline-flex;align-items:center" href="https://github.com/Kuzi-DEV/Tokio-ai/blob/main/docs/calibration.md">The full study, including what broke &rarr;</a>
+    </div>
+    <div class="bars">
+      <div class="bar-group">
+        <span class="label">Best of 50 strategies &middot; 20y, 10 real assets</span>
+        <div class="bar"><span>t-test</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="v">83.5%</span></div>
+        <div class="bar us"><span>TokIO</span><div class="track"><div class="fill" style="width:5%"></div></div><span class="v">4.2%</span></div>
+      </div>
+      <div class="bar-group">
+        <span class="label">Overlapping 20-day trades &middot; 20y, 10 real assets</span>
+        <div class="bar"><span>t-test</span><div class="track"><div class="fill" style="width:36.5%"></div></div><span class="v">30.5%</span></div>
+        <div class="bar us"><span>TokIO</span><div class="track"><div class="fill" style="width:6.5%"></div></div><span class="v">5.4%</span></div>
+      </div>
+      <div class="bar-group">
+        <span class="label">Overlapping 20-day trades &middot; simulated</span>
+        <div class="bar"><span>t-test</span><div class="track"><div class="fill" style="width:45.5%"></div></div><span class="v">38%</span></div>
+        <div class="bar us"><span>TokIO</span><div class="track"><div class="fill" style="width:9.6%"></div></div><span class="v">4&ndash;8%</span></div>
+      </div>
+      <span class="target">Share of no-edge strategies called significant. Target: 5%.</span>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap stack">
+    <h2>What every result reports.</h2>
+    <div class="grid">
+      <div><code>check_backtest()</code><h3>Corrected for every try</h3><p>A test of the mean that allows for serial dependence, corrected for every variant you tried (Romano-Wolf step-down).</p></div>
+      <div><code>DSR &middot; PSR</code><h3>Deflated Sharpe</h3><p>The Deflated and Probabilistic Sharpe Ratios, as published and corrected for dependence, plus the minimum track record.</p></div>
+      <div><code>PBO</code><h3>Overfitting odds</h3><p>The probability of backtest overfitting (CSCV) for grids: how often the in-sample winner loses out of sample.</p></div>
+      <div><code>costs=</code><h3>Costs and breakeven</h3><p>Costs, turnover, and the transaction cost at which the edge disappears.</p></div>
+      <div><code>lookahead</code><h3>Catches peeking</h3><p>The Sharpe with every position taken one bar later. A cheating SPY strategy drops from 13.26 to &minus;0.44.</p></div>
+      <div><code>robustness</code><h3>Not one lucky stretch</h3><p>Concentration with both tails trimmed, consistency across time, and the minimum backtest length.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="community" class="community">
+  <div class="wrap stack">
+    <h2>Build it with us.</h2>
+    <div class="cards">
+      <a class="card" href="https://github.com/Kuzi-DEV/Tokio-ai">
+        <span class="mono accent">GitHub</span>
+        <h3>Star the repo</h3>
+        <p>MIT licensed. Read the code and the calibration study.</p>
+      </a>
+      <a class="card" href="https://github.com/Kuzi-DEV/Tokio-ai/issues">
+        <span class="mono accent">Issues</span>
+        <h3>Report a bug or idea</h3>
+        <p>Including a template for a statistical concern, if you think a test is wrong.</p>
+      </a>
+      <div class="card soon">
+        <span class="mono accent">Discord</span>
+        <h3>Community server</h3>
+        <p>Coming soon: tickets for bugs, feature requests and feedback.</p>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="label">TokIO AI &middot; MIT &middot; Research tooling, not financial advice</span>
+    <a class="label" href="https://github.com/Kuzi-DEV/Tokio-ai">Source on GitHub</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var tabs = document.querySelectorAll('.tabs button');
+    var out = document.getElementById('cmd');
+    function show(btn) {
+      tabs.forEach(function (t) { t.setAttribute('aria-selected', t === btn ? 'true' : 'false'); });
+      out.textContent = '';
+      btn.dataset.cmd.split('\n').forEach(function (line, i) {
+        if (i) out.appendChild(document.createTextNode('\n'));
+        var s = document.createElement('span');
+        s.textContent = '$ ';
+        out.appendChild(s);
+        out.appendChild(document.createTextNode(line));
+      });
+    }
+    tabs.forEach(function (t) { t.addEventListener('click', function () { show(t); }); });
+    document.getElementById('copy').addEventListener('click', function () {
+      var cmd = document.querySelector('.tabs button[aria-selected="true"]').dataset.cmd;
+      if (navigator.clipboard) navigator.clipboard.writeText(cmd);
+    });
+  })();
+</script>
 </body>
 </html>
