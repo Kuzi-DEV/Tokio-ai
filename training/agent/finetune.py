@@ -69,6 +69,7 @@ def main():
     ap.add_argument("--max-len", type=int, default=6144)
     ap.add_argument("--out", default=str(HERE / "out" / "lora"))
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--data", default=str(HERE / "data"), help="folder with train.jsonl and dev.jsonl")
     args = ap.parse_args()
 
     from peft import LoraConfig, get_peft_model
@@ -78,8 +79,8 @@ def main():
     random.seed(args.seed)
     torch.manual_seed(args.seed)
     tok = AutoTokenizer.from_pretrained(args.model)
-    train, sk = examples(tok, HERE / "data" / "train.jsonl", args.max_len)
-    dev, skd = examples(tok, HERE / "data" / "dev.jsonl", args.max_len)
+    train, sk = examples(tok, Path(args.data) / "train.jsonl", args.max_len)
+    dev, skd = examples(tok, Path(args.data) / "dev.jsonl", args.max_len)
     lens = sorted(len(p) + len(t) for p, t in train)
     print(f"train {len(train)} turns (skipped {sk}), dev {len(dev)} (skipped {skd}); "
           f"tokens median {lens[len(lens) // 2]}, max {lens[-1]}", flush=True)
