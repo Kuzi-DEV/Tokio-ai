@@ -855,7 +855,7 @@ def run(text, kind, trials, ppy_user, prior_variants):
   // run here: get_prices (via the TokIO data proxy) and run_python (Pyodide).
   // =====================================================================
   const qs = new URLSearchParams(location.search);
-  const PROXY = (qs.get("proxy") || "https://tokio-data.REPLACE_ME.workers.dev").replace(/\/$/, "");
+  const PROXY = (qs.get("proxy") || "https://tokio-data.tokio-data.workers.dev").replace(/\/$/, "");
   const OR_URL = "https://openrouter.ai/api/v1";
   const KEY_STORE = "tokio-terminal-orkey", MODEL_STORE = "tokio-terminal-model", MODE_STORE = "tokio-terminal-mode";
   const MAX_STEPS = 16;

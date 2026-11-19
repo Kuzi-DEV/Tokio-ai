@@ -19,5 +19,5 @@ npx wrangler login    # once
 npx wrangler deploy   # -> https://tokio-data.<your-subdomain>.workers.dev
 ```
 
-Then set `PROXY` in `docs/terminal/index.html` to the deployed URL. For local
+Deployed at https://tokio-data.tokio-data.workers.dev (set as `PROXY` in `docs/terminal/index.html`). For local
 testing, open the terminal with `?proxy=http://127.0.0.1:8787`.
