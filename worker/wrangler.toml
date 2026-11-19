@@ -2,3 +2,18 @@ name = "tokio-data"
 main = "src/index.js"
 compatibility_date = "2025-06-01"
 workers_dev = true
+
+# Free model for visitors without their own key. The OpenRouter key is a
+# secret: `npx wrangler secret put OPENROUTER_KEY`.
+[vars]
+FREE_MODEL = "google/gemma-4-31b-it:free"
+FREE_CALLS_PER_DAY = "60"   # model calls per visitor IP per UTC day (one question is ~3-8 calls)
+
+[[kv_namespaces]]
+binding = "LLM_QUOTA"
+id = "c708874ed1ff49a1a44dc3dc2265134b"
+
+[[ratelimits]]
+name = "LLM_BURST"
+namespace_id = "1001"
+simple = { limit = 15, period = 60 }

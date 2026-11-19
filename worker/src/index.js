@@ -77,13 +77,83 @@ function reply(status, body, origin, extra = {}) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Free model: visitors without their own OpenRouter key get a few questions a
+// day on a free model, paid for by nobody (OpenRouter ":free" models) but sent
+// with TokIO's key. Limits: allowed origins only, our two tools only, a burst
+// limit and a per-IP daily quota, capped sizes and output tokens.
+// ---------------------------------------------------------------------------
+const TOOL_NAMES = new Set(["get_prices", "run_python"]);
+const MAX_BODY = 400_000;
+const MAX_MESSAGES = 80;
+
+async function freeModel(request, env, origin) {
+  const json = (status, obj) => reply(status, JSON.stringify(obj), origin);
+  if (request.method !== "POST") return json(405, { error: "POST only" });
+  if (!origin) return json(403, { error: "the free model is only available from the TokIO terminal" });
+  if (!env.OPENROUTER_KEY) return json(503, { error: "the free model isn't set up yet; add your own OpenRouter key" });
+
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  if (env.LLM_BURST) {
+    const { success } = await env.LLM_BURST.limit({ key: ip });
+    if (!success) return json(429, { error: "too many requests; wait a minute" });
+  }
+
+  const raw = await request.text();
+  if (raw.length > MAX_BODY) return json(413, { error: "conversation too long for the free model; start a new one" });
+  let body;
+  try { body = JSON.parse(raw); } catch { return json(400, { error: "bad JSON" }); }
+  const messages = body.messages, tools = body.tools || [];
+  if (!Array.isArray(messages) || !messages.length || messages.length > MAX_MESSAGES) return json(400, { error: "bad messages" });
+  if (messages[0].role !== "system" || !String(messages[0].content || "").startsWith("You are TokIO")) return json(400, { error: "not a TokIO conversation" });
+  if (!Array.isArray(tools) || tools.some((t) => !TOOL_NAMES.has(t?.function?.name))) return json(400, { error: "unsupported tools" });
+
+  // Per-IP daily quota (KV; eventually consistent, so it is a soft cap).
+  const perDay = Number(env.FREE_CALLS_PER_DAY || 60);
+  const day = new Date().toISOString().slice(0, 10);
+  const qkey = `q:${day}:${ip}`;
+  let used = 0;
+  if (env.LLM_QUOTA) {
+    used = Number(await env.LLM_QUOTA.get(qkey)) || 0;
+    if (used >= perDay) return json(429, { error: `free limit reached for today (${perDay} model calls). Add your own OpenRouter key to keep going.` });
+  }
+
+  const up = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${env.OPENROUTER_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://kuzi-dev.github.io/Tokio-ai/",
+      "X-Title": "TokIO Terminal (free)",
+    },
+    body: JSON.stringify({ model: env.FREE_MODEL, messages, tools, max_tokens: 3000 }),
+  });
+  const text = await up.text();
+  if (up.ok && env.LLM_QUOTA) await env.LLM_QUOTA.put(qkey, String(used + 1), { expirationTtl: 2 * 86400 });
+  return new Response(text, {
+    status: up.status,
+    headers: { "Content-Type": "application/json", "X-Free-Calls-Left": String(Math.max(0, perDay - used - 1)), "Access-Control-Expose-Headers": "X-Free-Calls-Left", ...corsHeaders(origin) },
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const origin = allowedOrigin(request.headers.get("Origin"));
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    const url = new URL(request.url);
+    if (request.method === "OPTIONS") {
+      const h = corsHeaders(origin);
+      if (origin && url.pathname === "/llm/chat") {
+        h["Access-Control-Allow-Methods"] = "POST, OPTIONS";
+        h["Access-Control-Allow-Headers"] = "Content-Type";
+      }
+      return new Response(null, { status: 204, headers: h });
+    }
+    if (url.pathname === "/llm/chat") return freeModel(request, env, origin);
+    if (url.pathname === "/llm/info") {
+      return reply(200, JSON.stringify({ model: env.FREE_MODEL, per_day: Number(env.FREE_CALLS_PER_DAY || 60), enabled: Boolean(env.OPENROUTER_KEY) }), origin);
+    }
     if (request.method !== "GET") return reply(405, '{"error":"GET only"}', origin);
 
-    const url = new URL(request.url);
     if (url.pathname === "/" || url.pathname === "/health") {
       return reply(200, JSON.stringify({ ok: true, routes: ["/yahoo/chart/{symbol}", "/cboe/options/{symbol}", "/cboe/putcall/{equity|index|total}", "/cboe/daily/{YYYY-MM-DD}"] }), origin);
     }
