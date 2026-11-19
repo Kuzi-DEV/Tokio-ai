@@ -161,6 +161,8 @@ class Lab:
 
     def best(self) -> Run:
         """The variant `check()` reports as strongest (lowest corrected p-value)."""
+        if len(self.runs) == 1:  # a single run is reported unnamed ("strategy"), so there is nothing to match
+            return self.runs[0]
         label = self.check().best.name
         return next(r for r in self.runs if _label(r) == label)
 

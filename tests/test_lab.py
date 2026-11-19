@@ -180,3 +180,11 @@ def test_best_and_final_test_of_a_run():
     assert b in lab.runs and b.signal is sma_cross
     final = lab.final_test(b)
     assert final.params == b.params and final.segment == "holdout"
+
+
+def test_best_of_a_single_run():
+    # One variant is reported unnamed, so best() must not try to match it by label.
+    lab = Lab(_bars(2000), holdout=0.25)
+    run = lab.run(sma_cross, fast=10, slow=50)
+    assert lab.best() is run
+    assert lab.final_test(lab.best()).segment == "holdout"
