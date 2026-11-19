@@ -205,3 +205,17 @@ def test_constant_fractional_position_does_not_beat_its_own_benchmark():
     run = lab.run(lambda x, w: x.close * 0 + w, w=0.5)
     excess = lab._tested(run)
     assert abs(excess.iloc[2:]).max() < 1e-5  # only the tiny gap from mean exposure 0.4998 vs 0.5
+
+
+def test_lookahead_in_a_sparse_signal_is_caught():
+    # On ~5% of bars: random cut points alone often missed the shift(-1).
+    import pytest
+    from tokio_ai import LookaheadError
+
+    def sparse(d, k):
+        down = (d.close.diff() < 0).astype(int)
+        return (down.rolling(k).sum() == k).astype(float).shift(-1).fillna(0.0)
+
+    for k in (3, 4, 5):
+        with pytest.raises(LookaheadError):
+            Lab(_bars(2000), holdout=0.25, vs="market").run(sparse, k=k)
