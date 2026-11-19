@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net blob:; worker-src blob:; connect-src https://cdn.jsdelivr.net https://pypi.org https://files.pythonhosted.org https://openrouter.ai https://*.workers.dev http://localhost:* http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:">
 <title>TokIO Terminal</title>
 <meta name="description" content="Check a backtest in your browser: corrected p-value, Deflated Sharpe, probability of overfitting. Runs locally with Python in WebAssembly; your file never leaves your machine.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,6 +28,7 @@
     --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 16px; line-height: 1.5; display: flex; flex-direction: column; }
   a { color: var(--fg); }
@@ -114,6 +116,34 @@
   .error { border: 1px solid var(--accent); background: rgba(255, 91, 31, .08); padding: 16px 18px; color: var(--fg); white-space: pre-wrap; font-family: var(--mono); font-size: 13px; }
   .hint { color: var(--muted); font-size: 14px; }
 
+  /* modes */
+  .modes { display: flex; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+  .modes button { flex: 1; min-height: 48px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+  .modes button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+  .check { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--body); min-height: 32px; }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+  /* chat */
+  .chat { display: flex; flex-direction: column; min-height: 0; }
+  .log { flex: 1 1 auto; overflow-y: auto; min-height: 0; padding: 28px; display: flex; flex-direction: column; gap: 18px; }
+  .bubble { display: flex; gap: 14px; font-size: 16px; max-width: 900px; }
+  .bubble b { font-family: var(--mono); font-weight: 400; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; flex: 0 0 52px; padding-top: 3px; }
+  .bubble .txt { white-space: pre-wrap; color: var(--body); min-width: 0; overflow-wrap: anywhere; }
+  .bubble.user .txt { color: var(--fg); }
+  .bubble .txt strong { color: var(--fg); font-weight: 500; }
+  .bubble .txt code { font-family: var(--mono); font-size: 14px; color: var(--fg); }
+  .toolcall { margin-left: 66px; border: 1px solid var(--line); background: var(--panel-2); max-width: 900px; }
+  .toolcall summary { display: flex; gap: 12px; align-items: center; padding: 10px 14px; min-height: 40px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .toolcall summary .st { margin-left: auto; }
+  .toolcall pre { margin: 0; padding: 12px 14px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--body); white-space: pre-wrap; overflow-x: auto; max-height: 420px; overflow-y: auto; }
+  .toolcall pre.code { color: var(--fg); }
+  .composer { flex: 0 0 auto; border-top: 1px solid var(--line); padding: 14px 20px; display: flex; gap: 12px; align-items: flex-end; background: var(--panel-2); }
+  .composer textarea { flex: 1; min-width: 0; resize: none; background: transparent; border: 0; color: var(--fg); font-family: var(--mono); font-size: 14px; line-height: 1.6; min-height: 44px; max-height: 200px; padding: 10px 0; }
+  .composer textarea:focus { outline: none; }
+  .composer .run { padding: 0 20px; }
+  .suggest { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+  .thinking { color: var(--faint); font-family: var(--mono); font-size: 13px; margin-left: 66px; }
+
   @media (max-width: 860px) {
     main { grid-template-columns: 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
@@ -123,6 +153,10 @@
     header { padding: 0 16px; }
     .block { padding: 16px; }
     .grid2 { grid-template-columns: 1fr; }
+    .log { overflow: visible; padding: 20px 16px; }
+    .toolcall, .thinking { margin-left: 0; }
+    .bubble { flex-direction: column; gap: 4px; }
+    .composer { position: sticky; bottom: 0; padding: 12px 16px; }
   }
 </style>
 </head>
@@ -138,6 +172,11 @@
 
 <main>
   <aside>
+    <div class="modes" role="tablist" aria-label="Mode">
+      <button role="tab" aria-selected="true" data-mode="file">Check a file</button>
+      <button role="tab" aria-selected="false" data-mode="agent">Ask the agent</button>
+    </div>
+    <div id="fileSide">
     <div class="block">
       <span class="label">1 &middot; Your backtest</span>
       <label class="drop" id="drop" tabindex="0">
@@ -178,13 +217,35 @@
       </div>
       <button class="run" id="run" disabled>Check it</button>
     </div>
+    </div>
+
+    <div id="agentSide" hidden>
+      <div class="block">
+        <span class="label">Model access</span>
+        <div class="field">
+          <label class="label" for="orKey">OpenRouter API key</label>
+          <input id="orKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-...">
+          <small>Sent only to openrouter.ai, straight from this tab. Get one at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>; you pay them per message.</small>
+        </div>
+        <label class="check"><input type="checkbox" id="orRemember"> Remember the key on this device</label>
+        <div class="field">
+          <label class="label" for="orModel">Model</label>
+          <select id="orModel"><option value="">Loading models&hellip;</option></select>
+        </div>
+      </div>
+      <div class="block">
+        <span class="label">What it can do</span>
+        <small class="hint">Pull daily prices for any Yahoo ticker, write and run Python here in your browser, and test strategies through TokIO's Lab: fills at the next open, 10&nbsp;bp costs, a lookahead check, every variant counted, and a holdout it can use once.</small>
+        <button class="ghost" id="newChat">New conversation</button>
+      </div>
+    </div>
 
     <div class="block">
       <div class="ledger-row"><span class="label">Session ledger</span><button class="ghost" id="resetLedger">Reset</button></div>
       <div class="ledger-row"><span>Checks</span><span id="ledgerChecks">0</span></div>
       <div class="ledger-row"><span>Variants counted</span><span id="ledgerVariants">0</span></div>
       <div class="ledger-list" id="ledgerList"></div>
-      <small class="hint">Every check of your own files adds to the count (samples don't), so testing ten ideas one at a time is judged like testing them together.</small>
+      <small class="hint">Every check of your own files and every strategy the agent tests adds to the count (samples don't), so testing ten ideas one at a time is judged like testing them together.</small>
     </div>
   </aside>
 
@@ -199,6 +260,26 @@
         <li>Same code as <code class="mono">pip install tokio-ai</code>, with measured false-positive rates.</li>
       </ol>
     </div>
+  </section>
+
+  <section class="chat" id="chat" hidden>
+    <div class="log" id="log" aria-live="polite">
+      <div class="empty" id="chatEmpty">
+        <span class="label accent">Agent &middot; beta</span>
+        <h1>Ask about any ticker or idea.</h1>
+        <p>The agent pulls the data, writes the backtest, and runs it through TokIO's checks. It can't hide the variants that failed: they all count against the one that worked.</p>
+        <div class="suggest">
+          <button class="chip" data-ask="Does a 50/200 SMA crossover on SPY beat holding SPY? Try a few nearby windows too."><b>Does the golden cross beat buy-and-hold on SPY?</b><span>Tests a small grid against the market</span></button>
+          <button class="chip" data-ask="Test RSI(2) mean reversion on QQQ: buy when RSI(2) is below 10 and close is above the 200-day average, exit when RSI(2) goes above 70. Try thresholds 5, 10 and 15."><b>RSI(2) mean reversion on QQQ</b><span>Three thresholds, tested together</span></button>
+          <button class="chip" data-ask="Is there a turn-of-the-month effect in SPY? Compare being long only the last trading day and first three trading days of each month vs holding at the same exposure."><b>Turn-of-the-month effect in SPY</b><span>A calendar anomaly, checked honestly</span></button>
+        </div>
+      </div>
+    </div>
+    <form class="composer" id="composer">
+      <label for="ask" class="label" hidden>Message</label>
+      <textarea id="ask" rows="1" placeholder="Ask about a ticker, signal or backtest&hellip;"></textarea>
+      <button class="run" id="send" type="submit">Send</button>
+    </form>
   </section>
 </main>
 
@@ -320,6 +401,106 @@ def _parse(text, kind):
         dates = None
     return "returns", (cols, dates, ppy), notes
 
+# ---------------- agent support ----------------
+import ast, contextlib, traceback
+PRICES = {}
+LABS = {}
+LEDGER_PRIOR = 0
+RUN_CHECKS = []
+
+def _pd():
+    import pandas as pd
+    return pd
+
+def load_chart(sym, text):
+    from tokio_ai.tools.prices import _parse_chart_payload
+    pd = _pd()
+    sym = sym.upper()
+    bars = _parse_chart_payload(json.loads(text), sym)
+    if not bars:
+        raise ValueError(f"no bars for {sym}")
+    df = pd.DataFrame([b.to_dict() for b in bars])
+    df.index = pd.to_datetime(df.pop("date"))
+    adj = (df["adj_close"] / df["close"]).where(df["close"] > 0)
+    for c in ("open", "high", "low", "close"):
+        df[c] = df[c] * adj
+    df = df.drop(columns=["adj_close"]).dropna(subset=["open", "close"])
+    df = df[(df["open"] > 0) & (df["close"] > 0)]
+    PRICES[sym] = df
+    if sym in LABS:
+        del LABS[sym]  # new data, new lab; the ledger keeps the old variants
+    first, last = df.index[0].date(), df.index[-1].date()
+    return (f"Loaded prices['{sym}']: {len(df)} daily bars {first} to {last} "
+            f"(split/dividend adjusted; columns open high low close volume). "
+            f"Last close {df['close'].iloc[-1]:.2f}; total return {df['close'].iloc[-1] / df['close'].iloc[0] - 1:+.1%}.")
+
+def lab(symbol, **kw):
+    """One Lab per symbol per conversation, so every variant tried on it is counted."""
+    s = symbol.upper()
+    if s not in PRICES:
+        raise KeyError(f"no prices for {s}; call the get_prices tool first")
+    if s not in LABS:
+        kw.setdefault("vs", "market")
+        LABS[s] = t.Lab(PRICES[s], **kw)
+    elif kw:
+        raise ValueError(f"lab('{s}') already exists in this conversation; its settings can't change once variants are counted")
+    return LABS[s]
+
+def check_backtest(returns, label="agent check", **kw):
+    if isinstance(returns, dict):
+        n = len(returns)
+    elif getattr(returns, "ndim", 1) == 2:
+        n = returns.shape[1]
+    else:
+        n = 1
+    total = LEDGER_PRIOR + sum(c["n"] for c in RUN_CHECKS) + n
+    if total > n:
+        kw["trials"] = max(kw.get("trials") or 0, total)
+    res = t.check_backtest(returns, **kw)
+    RUN_CHECKS.append({"name": label, "n": n, "sig": bool(res.significant)})
+    return res
+
+NS = {"np": np, "t": t, "tokio_ai": t, "lab": lab, "check_backtest": check_backtest, "prices": PRICES, "__name__": "__agent__"}
+
+def reset_agent():
+    PRICES.clear()
+    LABS.clear()
+    for k in [k for k in NS if k not in ("np", "t", "tokio_ai", "lab", "check_backtest", "prices", "__name__", "__builtins__")]:
+        del NS[k]
+
+def run_code(code, prior):
+    global LEDGER_PRIOR, RUN_CHECKS
+    LEDGER_PRIOR = int(prior)
+    RUN_CHECKS = []
+    NS["pd"] = _pd()
+    before = {s: len(l.runs) for s, l in LABS.items()}
+    buf = io.StringIO()
+    ok = True
+    try:
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            tree = ast.parse(code)
+            last = None
+            if tree.body and isinstance(tree.body[-1], ast.Expr):
+                last = ast.Expression(tree.body.pop().value)
+            exec(compile(tree, "<agent>", "exec"), NS)
+            if last is not None:
+                v = eval(compile(last, "<agent>", "eval"), NS)
+                if v is not None:
+                    print(v if isinstance(v, str) else (str(v) if hasattr(v, "verdict") or hasattr(v, "report") else repr(v)))
+    except Exception as e:
+        ok = False
+        tb = traceback.format_exception(type(e), e, e.__traceback__)
+        buf.write("".join(tb[-3:]))
+    checks = list(RUN_CHECKS)
+    for s, l in LABS.items():
+        k = len(l.runs) - before.get(s, 0)
+        if k > 0:
+            checks.append({"name": f"agent: {s} lab", "n": k, "sig": False})
+    out = buf.getvalue() or "(no output; print what you need)"
+    if len(out) > 8000:
+        out = out[:4500] + "\n... [output truncated] ...\n" + out[-3000:]
+    return json.dumps({"ok": ok, "output": out, "checks": checks})
+
 def _f(x, nd=4):
     if x is None:
         return None
@@ -406,7 +587,7 @@ def run(text, kind, trials, ppy_user, prior_variants):
   const shim = $("py-shim").textContent;
   const workerSrc = `
     importScripts("${PYODIDE}pyodide.js");
-    let py;
+    let py, pandasReady = false;
     const boot = (async () => {
       postMessage({type: "status", text: "Loading Python"});
       py = await loadPyodide({indexURL: "${PYODIDE}"});
@@ -427,6 +608,13 @@ def run(text, kind, trials, ppy_user, prior_variants):
         if (m.type === "sample") {
           const text = py.globals.get("_sample")(m.name);
           postMessage({type: "sample", id: m.id, text});
+        } else if (m.type === "prices" || m.type === "code") {
+          if (!pandasReady) { postMessage({type: "status", text: "Loading pandas"}); await py.loadPackage(["pandas"]); pandasReady = true; }
+          const out = m.type === "prices" ? py.globals.get("load_chart")(m.sym, m.text) : py.globals.get("run_code")(m.code, m.prior);
+          postMessage({type: "result", id: m.id, json: out});
+        } else if (m.type === "reset") {
+          py.globals.get("reset_agent")();
+          postMessage({type: "result", id: m.id, json: "ok"});
         } else if (m.type === "run") {
           const fn = py.globals.get("run");
           const res = fn(m.text, m.kind, m.trials, m.ppy, m.prior);
@@ -662,6 +850,241 @@ def run(text, kind, trials, ppy_user, prior_variants):
     });
     return svg;
   }
+  // =====================================================================
+  // Agent mode: an LLM (OpenRouter, the user's own key) with two tools that
+  // run here: get_prices (via the TokIO data proxy) and run_python (Pyodide).
+  // =====================================================================
+  const qs = new URLSearchParams(location.search);
+  const PROXY = (qs.get("proxy") || "https://tokio-data.tokio-data.workers.dev").replace(/\/$/, "");
+  const OR_URL = "https://openrouter.ai/api/v1";
+  const KEY_STORE = "tokio-terminal-orkey", MODEL_STORE = "tokio-terminal-model", MODE_STORE = "tokio-terminal-mode";
+  const MAX_STEPS = 16;
+
+  const SYSTEM = `You are TokIO, a research agent running in the user's browser. You test trading ideas on real data and report honestly what the evidence supports. You are not a financial advisor: frame results as research, never as advice to buy or sell.
+
+TOOLS
+- get_prices(symbol, range): loads daily OHLCV from Yahoo into prices['SYMBOL'] (pandas DataFrame, DatetimeIndex, columns open high low close volume, adjusted for splits and dividends). Use real tickers only (SPY, QQQ, AAPL, BTC-USD, ^VIX, GC=F...). Never invent data.
+- run_python(code): runs Python in a persistent namespace with np, pd, t (tokio_ai), prices, lab, check_backtest. Print what you need; the last expression is printed. Output over 8k characters is truncated, so print summaries, not whole frames.
+
+HOW TO TEST A STRATEGY (always this way)
+  L = lab('SPY')                      # one Lab per symbol per conversation; default vs='market'
+  def signal(d, fast, slow):          # d = price DataFrame; return the position for each bar (1 long, 0 flat, -1 short)
+      f, s = d.close.rolling(fast).mean(), d.close.rolling(slow).mean()
+      return (f > s).astype(float)
+  L.sweep(signal, fast=[20, 50], slow=[100, 200])   # or L.run(signal, fast=50, slow=200); every call is a counted variant
+  print(L.check())                    # verdict on the best variant, corrected for every variant tried
+- The Lab trades at the NEXT bar's open, charges 10 bp per unit traded, tests on the first 75% (in-sample), and raises LookaheadError if a signal uses future data.
+- vs='market' (default) asks whether it beats holding the asset at the same average exposure. A long-only strategy that just rode a rising market fails, correctly. Only use lab(sym, vs='cash') when the user asks about absolute profit, and say so.
+- L.final_test(L.best()) runs the chosen variant once on the untouched last 25%. Use it only after the search is finished; it works once.
+- For return series you built yourself, check_backtest(returns_or_dict_of_variants, label='...') gives the same verdict and counts in the session ledger.
+
+RULES
+1. Never claim a strategy or pattern works without a Lab check or check_backtest. Never eyeball a chart or a mean.
+2. Report the verdict exactly, including NOT SIGNIFICANT. Lead with it. A null result is a real answer, not a failure.
+3. Test every variant you consider in the same lab (use sweep). Never re-test a tweak to make something pass; all variants count and later tests get harder.
+4. State the sample: ticker, date range, number of bars, and how many variants were tried.
+5. If the user's idea is vague, pick a sensible standard version, say what you picked, and test it.
+6. Keep replies short: verdict first, then the 2-4 numbers that matter (corrected p, Sharpe vs market, haircut Sharpe, probability of overfitting if a grid), then one line on what it means. No tables of every number unless asked.
+7. If code errors, fix it and retry; don't make the user debug.`;
+
+  const TOOLS = [
+    {type: "function", function: {
+      name: "get_prices",
+      description: "Load daily OHLCV bars for a ticker into prices['SYMBOL'] in the Python namespace.",
+      parameters: {type: "object", properties: {
+        symbol: {type: "string", description: "Yahoo ticker, e.g. SPY, AAPL, BTC-USD, ^GSPC"},
+        range: {type: "string", enum: ["1y", "2y", "5y", "10y", "20y", "max"], description: "History length. Default 20y."}},
+        required: ["symbol"]}}},
+    {type: "function", function: {
+      name: "run_python",
+      description: "Run Python in the persistent namespace (np, pd, t=tokio_ai, prices, lab, check_backtest). Returns stdout and the last expression.",
+      parameters: {type: "object", properties: {code: {type: "string"}}, required: ["code"]}}},
+  ];
+
+  // ---------- mode switch ----------
+  const modeBtns = document.querySelectorAll("[data-mode]");
+  function setMode(mode) {
+    modeBtns.forEach(b => b.setAttribute("aria-selected", String(b.dataset.mode === mode)));
+    $("fileSide").hidden = mode !== "file";
+    $("agentSide").hidden = mode !== "agent";
+    out.hidden = mode !== "file";
+    $("chat").hidden = mode !== "agent";
+    try { localStorage.setItem(MODE_STORE, mode); } catch (e) {}
+    if (mode === "agent") { loadModels(); setTimeout(() => $("ask").focus(), 0); }
+  }
+  modeBtns.forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
+
+  // ---------- key + model ----------
+  const keyInput = $("orKey"), remember = $("orRemember"), modelSel = $("orModel");
+  try {
+    const k = localStorage.getItem(KEY_STORE);
+    if (k) { keyInput.value = k; remember.checked = true; }
+  } catch (e) {}
+  function storeKey() {
+    try {
+      if (remember.checked && keyInput.value.trim()) localStorage.setItem(KEY_STORE, keyInput.value.trim());
+      else localStorage.removeItem(KEY_STORE);
+    } catch (e) {}
+  }
+  keyInput.addEventListener("change", storeKey);
+  remember.addEventListener("change", storeKey);
+  modelSel.addEventListener("change", () => { try { localStorage.setItem(MODEL_STORE, modelSel.value); } catch (e) {} });
+
+  let modelsLoaded = false;
+  async function loadModels() {
+    if (modelsLoaded) return;
+    modelsLoaded = true;
+    try {
+      const res = await fetch(OR_URL + "/models");
+      const data = (await res.json()).data || [];
+      const usable = data.filter(m => (m.supported_parameters || []).includes("tools"));
+      const rank = (id) => /^anthropic\//.test(id) ? 0 : /^openai\//.test(id) ? 1 : /^google\//.test(id) ? 2 : 3;
+      usable.sort((a, b) => rank(a.id) - rank(b.id) || (b.created || 0) - (a.created || 0));
+      let saved = null;
+      try { saved = localStorage.getItem(MODEL_STORE); } catch (e) {}
+      modelSel.replaceChildren(...usable.map(m => {
+        const o = document.createElement("option");
+        o.value = m.id; o.textContent = m.name || m.id;
+        return o;
+      }));
+      const pick = usable.find(m => m.id === saved) || usable.find(m => /anthropic\/claude.*sonnet/.test(m.id)) || usable[0];
+      if (pick) modelSel.value = pick.id;
+    } catch (e) {
+      modelsLoaded = false;
+      modelSel.replaceChildren(new Option("Couldn't load the model list", ""));
+    }
+  }
+
+  // ---------- conversation ----------
+  const log = $("log"), ask = $("ask"), sendBtn = $("send");
+  let messages = [{role: "system", content: SYSTEM}];
+  let agentBusy = false;
+
+  ask.addEventListener("input", () => { ask.style.height = "auto"; ask.style.height = Math.min(ask.scrollHeight, 200) + "px"; });
+  ask.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); } });
+  $("composer").addEventListener("submit", (e) => { e.preventDefault(); const q = ask.value.trim(); if (q) { ask.value = ""; ask.style.height = "auto"; converse(q); } });
+  document.querySelectorAll("[data-ask]").forEach(b => b.addEventListener("click", () => converse(b.dataset.ask)));
+  $("newChat").addEventListener("click", async () => {
+    if (agentBusy) return;
+    messages = [{role: "system", content: SYSTEM}];
+    log.replaceChildren($("chatEmpty") || el("div"));
+    const empty = $("chatEmpty"); if (empty) empty.hidden = false;
+    try { await call({type: "reset"}); } catch (e) {}
+  });
+
+  function scrollLog() { log.scrollTop = log.scrollHeight; if (window.innerWidth <= 860) window.scrollTo(0, document.body.scrollHeight); }
+  // Minimal, safe formatting: **bold** and `code`; everything else is text.
+  function fmtText(text) {
+    const frag = document.createDocumentFragment();
+    const parts = String(text || "").split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+    parts.forEach(part => {
+      if (/^\*\*[^*]+\*\*$/.test(part)) frag.append(el("strong", {text: part.slice(2, -2)}));
+      else if (/^`[^`]+`$/.test(part)) frag.append(el("code", {text: part.slice(1, -1)}));
+      else if (part) frag.append(document.createTextNode(part.replace(/^#{1,4} /gm, "")));
+    });
+    return frag;
+  }
+  function bubble(role, text) {
+    const empty = $("chatEmpty"); if (empty) empty.hidden = true;
+    const b = el("div", {class: "bubble " + role}, el("b", {class: role === "user" ? "accent" : "", text: role === "user" ? "you" : "tokio"}), el("div", {class: "txt"}, fmtText(text)));
+    log.append(b); scrollLog();
+    return b;
+  }
+  function toolCard(name, args) {
+    const summaryText = name === "get_prices" ? `get_prices ${args.symbol || ""} ${args.range || "20y"}` : "run_python";
+    const st = el("span", {class: "st label", text: "running\u2026"});
+    const d = el("details", {class: "toolcall"}, el("summary", {}, el("span", {text: summaryText}), st));
+    if (name === "run_python") d.append(el("pre", {class: "code", text: args.code || ""}));
+    log.append(d); scrollLog();
+    return {done(ok, output) { st.textContent = ok ? "done" : "error"; st.className = "st label " + (ok ? "good" : "accent"); d.append(el("pre", {text: output})); }};
+  }
+
+  async function runTool(name, args) {
+    if (name === "get_prices") {
+      const sym = String(args.symbol || "").trim();
+      if (!/^[A-Za-z0-9^_.=\-]{1,15}$/.test(sym)) return {ok: false, output: "Invalid ticker."};
+      const range = ["1y", "2y", "5y", "10y", "20y", "max"].includes(args.range) ? args.range : "20y";
+      let text;
+      try {
+        const r = await fetch(`${PROXY}/yahoo/chart/${encodeURIComponent(sym)}?range=${range}&interval=1d`);
+        text = await r.text();
+        if (!r.ok) return {ok: false, output: `Data proxy returned ${r.status}: ${text.slice(0, 200)}`};
+      } catch (e) {
+        return {ok: false, output: "Couldn't reach the data proxy (" + PROXY + "). " + e.message};
+      }
+      try {
+        const m = await call({type: "prices", sym, text});
+        return {ok: true, output: m.json};
+      } catch (e) { return {ok: false, output: cleanError(e.message)}; }
+    }
+    if (name === "run_python") {
+      const prior = ledger.reduce((a, b) => a + b.n, 0);
+      const m = await call({type: "code", code: String(args.code || ""), prior});
+      const r = JSON.parse(m.json);
+      (r.checks || []).forEach(c => ledger.push(c));
+      if ((r.checks || []).length) { saveLedger(); drawLedger(); }
+      return {ok: r.ok, output: r.output};
+    }
+    return {ok: false, output: "Unknown tool " + name};
+  }
+
+  async function converse(question) {
+    if (agentBusy) return;
+    const key = keyInput.value.trim();
+    if (!key) { bubble("tokio", "Add your OpenRouter API key on the left first. It stays in this tab and goes only to openrouter.ai."); keyInput.focus(); return; }
+    if (!modelSel.value) { await loadModels(); }
+    if (!ready) { bubble("tokio", "Python is still loading; one moment and try again."); return; }
+    agentBusy = true; sendBtn.disabled = true; sendBtn.textContent = "\u2026";
+    bubble("user", question);
+    messages.push({role: "user", content: question});
+    const thinking = el("div", {class: "thinking", text: "thinking\u2026"});
+    try {
+      for (let step = 0; step < MAX_STEPS; step++) {
+        log.append(thinking); scrollLog();
+        const res = await fetch(OR_URL + "/chat/completions", {
+          method: "POST",
+          headers: {"Authorization": "Bearer " + key, "Content-Type": "application/json", "HTTP-Referer": "https://kuzi-dev.github.io/Tokio-ai/", "X-Title": "TokIO Terminal"},
+          body: JSON.stringify({model: modelSel.value, messages, tools: TOOLS, max_tokens: 4000}),
+        });
+        thinking.remove();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+          const msg = (data.error && (data.error.message || JSON.stringify(data.error))) || ("HTTP " + res.status);
+          bubble("tokio", "The model request failed: " + msg + (res.status === 401 ? "\nCheck the API key." : res.status === 402 ? "\nThe OpenRouter account needs credit." : ""));
+          messages.pop();
+          break;
+        }
+        const msg = data.choices && data.choices[0] && data.choices[0].message;
+        if (!msg) { bubble("tokio", "The model returned nothing. Try again or pick another model."); break; }
+        const calls = msg.tool_calls || [];
+        messages.push({role: "assistant", content: msg.content || "", ...(calls.length ? {tool_calls: calls} : {})});
+        if (msg.content && msg.content.trim()) bubble("tokio", msg.content.trim());
+        if (!calls.length) break;
+        for (const tc of calls) {
+          let args = {};
+          try { args = JSON.parse(tc.function.arguments || "{}"); } catch (e) {}
+          const card = toolCard(tc.function.name, args);
+          setStatus(tc.function.name === "get_prices" ? "Fetching prices\u2026" : "Running Python\u2026", "busy");
+          let r;
+          try { r = await runTool(tc.function.name, args); }
+          catch (e) { r = {ok: false, output: cleanError(e.message)}; }
+          setStatus("Ready \u00b7 tokio-ai", "ready");
+          card.done(r.ok, r.output);
+          messages.push({role: "tool", tool_call_id: tc.id, content: r.output});
+        }
+        if (step === MAX_STEPS - 1) bubble("tokio", "Stopping here: that was a lot of steps. Ask me to continue if you want more.");
+      }
+    } catch (e) {
+      thinking.remove();
+      bubble("tokio", "Something went wrong: " + e.message);
+    } finally {
+      agentBusy = false; sendBtn.disabled = false; sendBtn.textContent = "Send";
+    }
+  }
+
+  let startMode = "file";
+  try { startMode = qs.get("mode") || localStorage.getItem(MODE_STORE) || "file"; } catch (e) {}
+  setMode(startMode === "agent" ? "agent" : "file");
 })();
 </script>
 </body>
