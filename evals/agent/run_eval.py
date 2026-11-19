@@ -80,15 +80,21 @@ def oracle(item):
         yield {"content": "__ORACLE_FINAL__"}
 
 
+_VERDICTS = [("NOT REPORTABLE", r"NOT\s+REPORTABLE"),
+             ("NOT SIGNIFICANT", r"NOT\s+(?:STATISTICALLY\s+)?SIGNIFICANT|ISN'T\s+(?:STATISTICALLY\s+)?SIGNIFICANT|NO\s+SIGNIFICANT"),
+             ("SIGNIFICANT", r"\bSIGNIFICANT\b")]
+
+
 def reported_verdict(text: str) -> str | None:
+    """The verdict the answer leads with (rule 2: lead with it). Later mentions, such as a
+    holdout that came out not significant, don't override the headline."""
     t = text.upper()
-    if "NOT REPORTABLE" in t:
-        return "NOT REPORTABLE"
-    if re.search(r"NOT\s+(STATISTICALLY\s+)?SIGNIFICANT|ISN'T SIGNIFICANT|IS NOT SIGNIFICANT|NO SIGNIFICANT", t):
-        return "NOT SIGNIFICANT"
-    if re.search(r"\bSIGNIFICANT\b", t):
-        return "SIGNIFICANT"
-    return None
+    hits = []
+    for name, pat in _VERDICTS:
+        m = re.search(pat, t)
+        if m:
+            hits.append((m.start(), -m.end(), name))  # earliest; at a tie, the longer phrase
+    return min(hits)[2] if hits else None
 
 
 def run_one(shim, item, model, key, log):
