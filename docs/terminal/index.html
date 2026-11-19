@@ -223,9 +223,9 @@
       <div class="block">
         <span class="label">Model access</span>
         <div class="field">
-          <label class="label" for="orKey">OpenRouter API key</label>
+          <label class="label" for="orKey">OpenRouter API key (optional)</label>
           <input id="orKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-...">
-          <small>Sent only to openrouter.ai, straight from this tab. Get one at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>; you pay them per message.</small>
+          <small>Without a key you get the TokIO free model for a few questions a day. With one, pick any model; the key goes only to openrouter.ai, straight from this tab. Get one at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>; you pay them per message.</small>
         </div>
         <label class="check"><input type="checkbox" id="orRemember"> Remember the key on this device</label>
         <div class="field">
@@ -930,7 +930,7 @@ RULES
   remember.addEventListener("change", storeKey);
   modelSel.addEventListener("change", () => { try { localStorage.setItem(MODEL_STORE, modelSel.value); } catch (e) {} });
 
-  let modelsLoaded = false;
+  let modelsLoaded = false, freeOn = false;
   async function loadModels() {
     if (modelsLoaded) return;
     modelsLoaded = true;
@@ -942,18 +942,23 @@ RULES
       usable.sort((a, b) => rank(a.id) - rank(b.id) || (b.created || 0) - (a.created || 0));
       let saved = null;
       try { saved = localStorage.getItem(MODEL_STORE); } catch (e) {}
-      modelSel.replaceChildren(...usable.map(m => {
-        const o = document.createElement("option");
-        o.value = m.id; o.textContent = m.name || m.id;
-        return o;
-      }));
-      const pick = usable.find(m => m.id === saved) || usable.find(m => /anthropic\/claude.*sonnet/.test(m.id)) || usable[0];
-      if (pick) modelSel.value = pick.id;
+      try { freeOn = Boolean((await (await fetch(PROXY + "/llm/info")).json()).enabled); } catch (e) {}
+      const free = new Option(freeOn ? "TokIO free model (no key, a few questions a day)" : "TokIO free model (coming soon)", FREE);
+      free.disabled = !freeOn;
+      const group = document.createElement("optgroup");
+      group.label = "With your OpenRouter key";
+      group.append(...usable.map(m => new Option(m.name || m.id, m.id)));
+      modelSel.replaceChildren(free, group);
+      const pick = usable.find(m => m.id === saved);
+      const keyed = pick || usable.find(m => /anthropic\/claude.*sonnet/.test(m.id)) || usable[0];
+      const wantFree = freeOn && (saved === FREE || !keyInput.value.trim());
+      modelSel.value = wantFree ? FREE : (keyed ? keyed.id : FREE);
     } catch (e) {
       modelsLoaded = false;
-      modelSel.replaceChildren(new Option("Couldn't load the model list", ""));
+      modelSel.replaceChildren(new Option("TokIO free model (no key, a few questions a day)", FREE));
     }
   }
+  const FREE = "__tokio_free__";
 
   // ---------- conversation ----------
   const log = $("log"), ask = $("ask"), sendBtn = $("send");
@@ -1031,8 +1036,9 @@ RULES
   async function converse(question) {
     if (agentBusy) return;
     const key = keyInput.value.trim();
-    if (!key) { bubble("tokio", "Add your OpenRouter API key on the left first. It stays in this tab and goes only to openrouter.ai."); keyInput.focus(); return; }
     if (!modelSel.value) { await loadModels(); }
+    const useFree = modelSel.value === FREE || !modelSel.value;
+    if (!useFree && !key) { bubble("tokio", "That model needs your OpenRouter API key (left panel)." + (freeOn ? " Or pick the TokIO free model at the top of the list." : " A free model with no key is coming soon.")); keyInput.focus(); return; }
     if (!ready) { bubble("tokio", "Python is still loading; one moment and try again."); return; }
     agentBusy = true; sendBtn.disabled = true; sendBtn.textContent = "\u2026";
     bubble("user", question);
@@ -1041,15 +1047,17 @@ RULES
     try {
       for (let step = 0; step < MAX_STEPS; step++) {
         log.append(thinking); scrollLog();
-        const res = await fetch(OR_URL + "/chat/completions", {
-          method: "POST",
-          headers: {"Authorization": "Bearer " + key, "Content-Type": "application/json", "HTTP-Referer": "https://kuzi-dev.github.io/Tokio-ai/", "X-Title": "TokIO Terminal"},
-          body: JSON.stringify({model: modelSel.value, messages, tools: TOOLS, max_tokens: 4000}),
-        });
+        const res = useFree
+          ? await fetch(PROXY + "/llm/chat", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({messages, tools: TOOLS})})
+          : await fetch(OR_URL + "/chat/completions", {
+              method: "POST",
+              headers: {"Authorization": "Bearer " + key, "Content-Type": "application/json", "HTTP-Referer": "https://kuzi-dev.github.io/Tokio-ai/", "X-Title": "TokIO Terminal"},
+              body: JSON.stringify({model: modelSel.value, messages, tools: TOOLS, max_tokens: 4000}),
+            });
         thinking.remove();
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.error) {
-          const msg = (data.error && (data.error.message || JSON.stringify(data.error))) || ("HTTP " + res.status);
+          const msg = (typeof data.error === "string" ? data.error : data.error && (data.error.message || JSON.stringify(data.error))) || ("HTTP " + res.status);
           bubble("tokio", "The model request failed: " + msg + (res.status === 401 ? "\nCheck the API key." : res.status === 402 ? "\nThe OpenRouter account needs credit." : ""));
           messages.pop();
           break;
