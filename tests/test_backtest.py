@@ -325,3 +325,10 @@ def test_partial_positions_still_report_turnover_for_the_reported_variant():
     assert res.best.name == "a"
     assert res.turnover_per_year is not None and res.breakeven_cost is None
     assert any("every variant" in n for n in res.notes)
+
+
+def test_flat_returns_say_why_they_are_not_reportable():
+    import numpy as np
+    res = check_backtest(np.zeros(500))
+    assert res.verdict == "NOT REPORTABLE"
+    assert "don't vary" in str(res) and "needs at least" not in str(res)

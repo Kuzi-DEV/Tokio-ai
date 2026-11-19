@@ -252,9 +252,13 @@ class BacktestResult:
 
     def __str__(self) -> str:
         b = self.best
-        if not b.reportable:
+        if not b.reportable and b.n_bars < MIN_BARS:
             lines = [f"NOT REPORTABLE: {b.n_bars} usable {self.bar_unit}; a Sharpe ratio needs at least "
                      f"{MIN_BARS} before any verdict means anything."]
+        elif not b.reportable:
+            lines = [f"NOT REPORTABLE: the returns don't vary over the {b.n_bars} {self.bar_unit} (the strategy "
+                     "never trades, or exactly matches what it is compared against), so there is no Sharpe "
+                     "ratio to test."]
         else:
             years = b.n_bars / self.periods_per_year
             who = "" if len(self.strategies) == 1 else f" Strongest variant: {b.name}."
