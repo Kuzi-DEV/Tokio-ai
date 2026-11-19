@@ -52,7 +52,7 @@ def examples(tok, path, max_len):
 
 def loss_on(model, head, p_ids, t_ids, device):
     ids = torch.tensor([p_ids + t_ids], device=device)
-    hidden = model(input_ids=ids).last_hidden_state  # (1, L, d)
+    hidden = model(input_ids=ids, use_cache=False).last_hidden_state  # (1, L, d)
     # position j predicts token j+1: targets are t_ids, predicted from positions len(p)-1 .. L-2
     h = hidden[0, len(p_ids) - 1: len(p_ids) + len(t_ids) - 1]
     logits = head(h).float()
@@ -71,7 +71,7 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+    from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     import bitsandbytes as bnb
 
@@ -87,7 +87,10 @@ def main():
     q = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True,
                            bnb_4bit_compute_dtype=torch.bfloat16)
     model = AutoModelForCausalLM.from_pretrained(args.model, quantization_config=q, dtype=torch.bfloat16, device_map="cuda")
-    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+    # Not prepare_model_for_kbit_training: it upcasts the 151k-token embedding (and head) to fp32, ~2.5 GB on a 4 GB card.
+    model.config.use_cache = False
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    model.enable_input_require_grads()
     model = get_peft_model(model, LoraConfig(r=args.rank, lora_alpha=2 * args.rank, lora_dropout=0.05, task_type="CAUSAL_LM",
                                              target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]))
     model.print_trainable_parameters()
