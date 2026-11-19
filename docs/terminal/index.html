@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TokIO Terminal</title>
+<meta name="description" content="Check a backtest in your browser: corrected p-value, Deflated Sharpe, probability of overfitting. Runs locally with Python in WebAssembly; your file never leaves your machine.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@200;300;500&family=Barlow:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0c0f;
+    --panel: #111216;
+    --panel-2: #0e0f12;
+    --line: #2a2b30;
+    --rule: #1e1f23;
+    --fg: #ededE8;
+    --body: #b9b9b3;
+    --muted: #9a9a94;
+    --faint: #6e6e69;
+    --accent: #ff5b1f;
+    --good: #5ad19a;
+    --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+    --sans: Barlow, system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 16px; line-height: 1.5; display: flex; flex-direction: column; }
+  a { color: var(--fg); }
+  a:hover { color: var(--accent); }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .label { font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; font-size: 11px; color: var(--muted); }
+  .accent { color: var(--accent); }
+  .good { color: var(--good); }
+  .mono { font-family: var(--mono); }
+
+  /* top bar */
+  header { display: flex; align-items: center; gap: 20px; padding: 0 20px; height: 52px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+  .logo { text-decoration: none; display: flex; align-items: baseline; gap: 10px; }
+  .logo b { font-family: var(--display); font-weight: 500; font-size: 24px; letter-spacing: .04em; }
+  .status { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+  .dot.busy { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .dot.ready { background: var(--good); }
+  @keyframes pulse { 50% { opacity: .3; } }
+  @media (prefers-reduced-motion: reduce) { .dot.busy { animation: none; } }
+  header nav { display: flex; gap: 18px; }
+  header nav a { text-decoration: none; }
+
+  /* layout */
+  main { flex: 1 1 auto; display: grid; grid-template-columns: 360px minmax(0, 1fr); min-height: 0; }
+  aside { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+  .block { padding: 20px; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 12px; }
+  .drop { border: 1px dashed #3a3b40; padding: 28px 16px; text-align: center; cursor: pointer; display: flex; flex-direction: column; gap: 6px; align-items: center; background: var(--panel-2); }
+  .drop:hover, .drop.over { border-color: var(--accent); }
+  .drop strong { font-family: var(--display); font-weight: 300; font-size: 26px; line-height: 1.1; }
+  .drop span { color: var(--muted); font-size: 14px; }
+  .samples { display: flex; flex-direction: column; gap: 8px; }
+  .chip { text-align: left; background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-height: 44px; }
+  .chip:hover { border-color: var(--accent); }
+  .chip b { font-weight: 500; font-size: 14px; }
+  .chip span { font-size: 13px; color: var(--muted); }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field input, .field select { background: var(--panel-2); border: 1px solid var(--line); color: var(--fg); font-family: var(--mono); font-size: 14px; padding: 10px; min-height: 44px; width: 100%; }
+  .field small { color: var(--faint); font-size: 12px; }
+  .run { background: var(--accent); color: var(--bg); border: 0; min-height: 48px; font-family: var(--mono); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+  .run:disabled { background: #3a3b40; color: var(--faint); cursor: not-allowed; }
+  .ghost { background: none; border: 1px solid #3a3b40; min-height: 40px; padding: 0 14px; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+  .ghost:hover { border-color: var(--accent); }
+  .ledger-row { display: flex; justify-content: space-between; gap: 8px; font-family: var(--mono); font-size: 13px; }
+  .ledger-list { display: flex; flex-direction: column; gap: 4px; font-family: var(--mono); font-size: 12px; color: var(--muted); max-height: 160px; overflow-y: auto; }
+  .ledger-list div { display: flex; justify-content: space-between; gap: 8px; }
+  .ledger-list div span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-name { font-family: var(--mono); font-size: 12px; color: var(--body); word-break: break-all; }
+
+  /* output */
+  .out { overflow-y: auto; min-height: 0; padding: 28px; display: flex; flex-direction: column; gap: 24px; }
+  .empty { margin: auto; max-width: 560px; display: flex; flex-direction: column; gap: 18px; text-align: left; }
+  .empty h1 { font-family: var(--display); font-weight: 200; font-size: clamp(44px, 6vw, 72px); line-height: .95; margin: 0; }
+  .empty p { color: var(--body); margin: 0; }
+  .empty ol { color: var(--body); margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+  .verdict { border: 1px solid var(--line); background: var(--panel); padding: 28px; display: flex; flex-direction: column; gap: 20px; }
+  .verdict-top { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+  .verdict h2 { font-family: var(--display); font-weight: 300; font-size: clamp(32px, 4vw, 48px); line-height: 1; margin: 0; }
+  .pvals { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+  .pvals > div { display: flex; flex-direction: column; }
+  .big { font-family: var(--display); font-weight: 200; font-size: clamp(56px, 7vw, 88px); line-height: 1; }
+  .struck { color: var(--faint); text-decoration: line-through; text-decoration-thickness: 2px; }
+  .arrow { font-family: var(--display); font-weight: 200; font-size: 48px; line-height: 1.3; color: var(--faint); }
+  .lead { color: var(--body); max-width: 760px; }
+  .stats { display: flex; flex-wrap: wrap; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+  .stats div { flex: 1 1 130px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+  .stats div span:last-child { font-family: var(--mono); font-size: 16px; }
+  .stats small { color: var(--faint); font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px; }
+  .panel { border: 1px solid var(--line); background: var(--panel); padding: 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .panel h3 { font-family: var(--display); font-weight: 300; font-size: 26px; margin: 0; line-height: 1; }
+  table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 13px; }
+  th, td { text-align: right; padding: 7px 8px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-weight: 400; color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+  tr.best td { color: var(--fg); }
+  td { color: var(--body); }
+  .table-wrap { overflow-x: auto; max-height: 360px; overflow-y: auto; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  .notes { display: flex; flex-direction: column; gap: 8px; color: var(--body); margin: 0; padding-left: 18px; }
+  details { border: 1px solid var(--line); background: var(--panel-2); }
+  summary { cursor: pointer; padding: 14px 18px; min-height: 44px; }
+  details pre { margin: 0; padding: 0 18px 18px; font-size: 12px; color: var(--body); white-space: pre-wrap; overflow-x: auto; }
+  .error { border: 1px solid var(--accent); background: rgba(255, 91, 31, .08); padding: 16px 18px; color: var(--fg); white-space: pre-wrap; font-family: var(--mono); font-size: 13px; }
+  .hint { color: var(--muted); font-size: 14px; }
+
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+    .out { overflow: visible; padding: 20px 16px; }
+    body { display: block; }
+    header nav { display: none; }
+    header { padding: 0 16px; }
+    .block { padding: 16px; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="../"><b>TOKIO</b><span class="label">terminal</span></a>
+  <nav>
+    <a class="label" href="../#install">Install</a>
+    <a class="label" href="https://github.com/Kuzi-DEV/Tokio-ai">GitHub</a>
+  </nav>
+  <div class="status" role="status" aria-live="polite"><span class="dot busy" id="dot"></span><span class="label" id="status">Starting Python&hellip;</span></div>
+</header>
+
+<main>
+  <aside>
+    <div class="block">
+      <span class="label">1 &middot; Your backtest</span>
+      <label class="drop" id="drop" tabindex="0">
+        <strong>Drop a CSV</strong>
+        <span>One column per variant you tried, or a TradingView &ldquo;List of trades&rdquo; export</span>
+        <input type="file" id="file" accept=".csv,.txt,.tsv" hidden>
+      </label>
+      <div class="file-name" id="fileName" hidden></div>
+    </div>
+
+    <div class="block">
+      <span class="label">Or try a sample</span>
+      <div class="samples">
+        <button class="chip" data-sample="luck"><b>20 strategies with no edge</b><span>Pure noise. The best one still looks good alone.</span></button>
+        <button class="chip" data-sample="edge"><b>One strategy with a real edge</b><span>Ten years of daily returns, Sharpe about 1.</span></button>
+        <button class="chip" data-sample="grid"><b>A 12-variant grid, one overfit</b><span>Correlated variants; the winner is a fluke.</span></button>
+      </div>
+    </div>
+
+    <div class="block">
+      <span class="label">2 &middot; Settings</span>
+      <div class="field">
+        <label class="label" for="kind">Columns hold</label>
+        <select id="kind">
+          <option value="auto">Detect automatically</option>
+          <option value="returns">Per-bar returns (0.01 = +1%)</option>
+          <option value="equity">Equity curves / prices</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="trials">Variants tried in total</label>
+        <input id="trials" type="number" min="1" step="1" placeholder="the columns in the file">
+        <small>Tried 200 and kept 5? Enter 200. The ones you threw away still count.</small>
+      </div>
+      <div class="field">
+        <label class="label" for="ppy">Bars per year</label>
+        <input id="ppy" type="number" min="1" step="any" placeholder="from the dates, or 252">
+      </div>
+      <button class="run" id="run" disabled>Check it</button>
+    </div>
+
+    <div class="block">
+      <div class="ledger-row"><span class="label">Session ledger</span><button class="ghost" id="resetLedger">Reset</button></div>
+      <div class="ledger-row"><span>Checks</span><span id="ledgerChecks">0</span></div>
+      <div class="ledger-row"><span>Variants counted</span><span id="ledgerVariants">0</span></div>
+      <div class="ledger-list" id="ledgerList"></div>
+      <small class="hint">Every check of your own files adds to the count (samples don't), so testing ten ideas one at a time is judged like testing them together.</small>
+    </div>
+  </aside>
+
+  <section class="out" id="out" aria-live="polite">
+    <div class="empty">
+      <span class="label accent">Runs in your browser</span>
+      <h1>Is your backtest real?</h1>
+      <p>Drop in the returns of every variant you tried. TokIO tests the best one, corrected for the others and for serial dependence, and tells you how likely it is that picking by backtest just picked the luckiest.</p>
+      <ol>
+        <li>Your file never leaves this tab. Python runs locally in WebAssembly.</li>
+        <li>The first load fetches Python and TokIO (about 15&nbsp;MB, cached after).</li>
+        <li>Same code as <code class="mono">pip install tokio-ai</code>, with measured false-positive rates.</li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<script id="py-shim" type="text/python">
+import csv, io, json, math, statistics
+from datetime import datetime
+import numpy as np
+import tokio_ai as t
+from tokio_ai.trades import is_tradingview_header
+
+DATE_FORMATS = ("%Y-%m-%d", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d")
+
+def _date(s):
+    s = s.strip().replace("Z", "")
+    for f in DATE_FORMATS:
+        try:
+            return datetime.strptime(s[:19] if "T" in s else s, f)
+        except ValueError:
+            pass
+    return None
+
+def _num(s):
+    s = s.strip().replace(",", "").replace("%", "")
+    if s == "" or s.lower() in ("nan", "na", "null", "none"):
+        return math.nan
+    return float(s)
+
+def _sample(name):
+    n = 2520
+    if name == "luck":
+        rng = np.random.default_rng(2)
+        cols = {f"strategy_{i+1:02d}": rng.normal(0.0, 0.01, n) for i in range(20)}
+    elif name == "edge":
+        rng = np.random.default_rng(4)
+        cols = {"trend_follow": rng.normal(0.0006, 0.01, n)}
+    else:
+        rng = np.random.default_rng(27)
+        base = rng.normal(0.0, 0.01, n)
+        cols = {f"lookback_{10 + 5*i}": 0.6 * base + 0.4 * rng.normal(0.0, 0.01, n) for i in range(12)}
+    dates = np.arange("2015-01-02", "2030-01-01", dtype="datetime64[D]")
+    dates = dates[np.is_busday(dates)][:n]
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["date"] + list(cols))
+    for k in range(n):
+        w.writerow([str(dates[k])] + [f"{cols[c][k]:.6f}" for c in cols])
+    return out.getvalue()
+
+def _parse(text, kind):
+    sample = text[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    rows = [r for r in csv.reader(io.StringIO(text), dialect) if any(c.strip() for c in r)]
+    if len(rows) < 3:
+        raise ValueError("The file needs a header row and at least two rows of data.")
+    header = [h.strip() for h in rows[0]]
+    if is_tradingview_header(header):
+        return "tradingview", None, []
+    body = rows[1:]
+    dates = None
+    first = [r[0] if r else "" for r in body[:20]]
+    if sum(_date(x) is not None for x in first) >= max(1, len(first) // 2):
+        dates = [_date(r[0]) if r else None for r in body]
+        start = 1
+    else:
+        start = 0
+    cols = {}
+    skipped = []
+    for j in range(start, len(header)):
+        vals = []
+        ok = True
+        for r in body:
+            try:
+                vals.append(_num(r[j]) if j < len(r) else math.nan)
+            except ValueError:
+                ok = False
+                break
+        if ok and sum(not math.isnan(v) for v in vals) >= 2:
+            cols[header[j] or f"col{j}"] = np.array(vals, dtype=float)
+        else:
+            skipped.append(header[j] or f"col{j}")
+    if not cols:
+        raise ValueError("No numeric columns found. Expected one column of returns per variant, with an optional date column first.")
+    notes = []
+    if skipped:
+        notes.append("Skipped non-numeric columns: " + ", ".join(skipped[:8]) + ("..." if len(skipped) > 8 else "") + ".")
+    if kind == "auto":
+        med = float(np.nanmedian(np.abs(np.concatenate(list(cols.values())))))
+        kind = "equity" if med > 0.5 else "returns"
+        notes.append("Read the columns as " + ("equity curves or prices (converted to returns)." if kind == "equity" else "per-bar returns."))
+    if kind == "equity":
+        conv = {}
+        for k, v in cols.items():
+            r = v[1:] / v[:-1] - 1.0
+            conv[k] = r
+        cols = conv
+        if dates is not None:
+            dates = dates[1:]
+    # drop rows where every column is missing; keep alignment
+    mat = np.column_stack(list(cols.values()))
+    keep = ~np.all(np.isnan(mat), axis=1)
+    mat = mat[keep]
+    if dates is not None:
+        dates = [d for d, k in zip(dates, keep) if k]
+    if np.isnan(mat).any():
+        n_bad = int(np.isnan(mat).any(axis=1).sum())
+        mat = np.nan_to_num(mat, nan=0.0)
+        notes.append(f"{n_bad} rows had gaps; missing returns were set to 0 (flat).")
+    cols = {k: mat[:, i] for i, k in enumerate(cols)}
+    if dates is not None and all(d is not None for d in dates) and len(dates) > 2:
+        gaps = sorted((dates[i+1] - dates[i]).total_seconds() for i in range(len(dates) - 1))
+        med_gap = gaps[len(gaps) // 2]
+        span_years = (dates[-1] - dates[0]).total_seconds() / (365.25 * 86400)
+        ppy = (len(dates) - 1) / span_years if span_years > 0 else None
+    else:
+        ppy = None
+        dates = None
+    return "returns", (cols, dates, ppy), notes
+
+def _f(x, nd=4):
+    if x is None:
+        return None
+    try:
+        x = float(x)
+    except Exception:
+        return None
+    return None if math.isnan(x) or math.isinf(x) else round(x, nd)
+
+def run(text, kind, trials, ppy_user, prior_variants):
+    mode, payload, *rest = _parse(text, kind)
+    notes = rest[0] if rest else []
+    if mode == "tradingview":
+        import tempfile, os
+        path = os.path.join(tempfile.gettempdir(), "tokio_tv.csv")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        tl = t.read_tradingview(path)
+        src = tl
+        n_var = 1
+        series = {"trades": np.cumsum(np.asarray(tl.returns, dtype=float))} if hasattr(tl, "returns") else {}
+        dates = None
+        ppy = ppy_user
+        notes.append("Read a TradingView trade list; each closed trade is one observation.")
+    else:
+        cols, dates, ppy_dates = payload
+        src = cols
+        n_var = len(cols)
+        ppy = ppy_user or ppy_dates
+        series = {k: np.cumsum(v) for k, v in cols.items()}
+    total = prior_variants + n_var
+    use_trials = max(total, trials or 0)
+    kwargs = {}
+    if use_trials > n_var:
+        kwargs["trials"] = use_trials
+    if ppy:
+        kwargs["periods_per_year"] = float(ppy)
+    res = t.check_backtest(src, **kwargs)
+    best = res.best
+    if mode == "tradingview" and "trades" in series:
+        series = {best.name: series["trades"]}
+    rows = []
+    for s in sorted(res.strategies, key=lambda s: s.p_adjusted):
+        rows.append({"name": s.name, "sharpe": _f(s.sharpe, 2), "p_naive": _f(s.p_naive), "p_alone": _f(s.p_alone),
+                     "p_adj": _f(s.p_adjusted), "haircut": _f(s.haircut_sharpe, 2), "sig": bool(s.significant(res.alpha))})
+    # thin the equity curves for drawing
+    chart = {}
+    for k, v in list(series.items())[:40]:
+        n = len(v)
+        step = max(1, n // 400)
+        chart[k] = [_f(x, 5) for x in v[::step]]
+    dsr = getattr(res.deflated, "dsr", None) if res.deflated is not None else None
+    if dsr is None and res.deflated is not None:
+        for attr in ("probability", "value", "psr"):
+            dsr = getattr(res.deflated, attr, None)
+            if dsr is not None:
+                break
+    mtrl = getattr(res.deflated, "min_track_record", None) if res.deflated is not None else None
+    pbo = getattr(res.overfitting, "pbo", None) if res.overfitting is not None else None
+    years = best.n_bars / res.periods_per_year if res.periods_per_year else None
+    return json.dumps({
+        "verdict": res.verdict, "significant": bool(res.significant), "alpha": res.alpha,
+        "p_value": _f(res.p_value), "best": best.name, "p_alone": _f(best.p_alone), "p_naive": _f(best.p_naive),
+        "sharpe": _f(best.sharpe, 2), "haircut": _f(best.haircut_sharpe, 2), "n_bars": best.n_bars,
+        "years": _f(years, 1), "ppy": _f(res.periods_per_year, 1), "bar_unit": res.bar_unit,
+        "trials": res.trials, "n_variants": n_var, "correction": res.correction,
+        "survives": best.survives_trials(res.alpha), "reportable": bool(best.reportable),
+        "dsr": _f(dsr, 3), "mtrl": _f(mtrl, 0), "pbo": _f(pbo, 3),
+        "rows": rows, "chart": chart, "notes": notes + list(res.notes),
+        "report": str(res), "version": t.__version__,
+    })
+</script>
+
+<script>
+(() => {
+  const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.27.2/full/";
+  const TOKIO = "tokio-ai==0.7.0";
+  const $ = (id) => document.getElementById(id);
+  const out = $("out"), runBtn = $("run");
+  let current = null;            // {name, text}
+  let ready = false, busy = false;
+
+  // ---------- Python in a worker ----------
+  const shim = $("py-shim").textContent;
+  const workerSrc = `
+    importScripts("${PYODIDE}pyodide.js");
+    let py;
+    const boot = (async () => {
+      postMessage({type: "status", text: "Loading Python"});
+      py = await loadPyodide({indexURL: "${PYODIDE}"});
+      postMessage({type: "status", text: "Loading numpy"});
+      await py.loadPackage(["numpy", "micropip"]);
+      postMessage({type: "status", text: "Installing TokIO"});
+      const micropip = py.pyimport("micropip");
+      await micropip.install("${TOKIO}");
+      py.runPython(SHIM);
+      postMessage({type: "ready", version: py.runPython("t.__version__")});
+    })().catch(e => postMessage({type: "fatal", text: String(e)}));
+    let SHIM = "";
+    onmessage = async (ev) => {
+      const m = ev.data;
+      if (m.type === "shim") { SHIM = m.code; return; }
+      await boot;
+      try {
+        if (m.type === "sample") {
+          const text = py.globals.get("_sample")(m.name);
+          postMessage({type: "sample", id: m.id, text});
+        } else if (m.type === "run") {
+          const fn = py.globals.get("run");
+          const res = fn(m.text, m.kind, m.trials, m.ppy, m.prior);
+          postMessage({type: "result", id: m.id, json: res});
+        }
+      } catch (e) {
+        postMessage({type: "error", id: m.id, text: String(e.message || e)});
+      }
+    };`;
+  // The shim must arrive before boot runs it; post it synchronously right after creating the worker.
+  const worker = new Worker(URL.createObjectURL(new Blob([workerSrc], {type: "text/javascript"})));
+  worker.postMessage({type: "shim", code: shim});
+
+  let seq = 0;
+  const pending = new Map();
+  const call = (msg) => new Promise((resolve, reject) => {
+    const id = ++seq;
+    pending.set(id, {resolve, reject});
+    worker.postMessage({...msg, id});
+  });
+
+  worker.onmessage = (ev) => {
+    const m = ev.data;
+    if (m.type === "status") setStatus(m.text + "…", "busy");
+    else if (m.type === "ready") { ready = true; setStatus("Ready · tokio-ai " + m.version, "ready"); refreshRun(); }
+    else if (m.type === "fatal") { setStatus("Failed to start", ""); showError("Python failed to load in this browser.\n" + m.text); }
+    else {
+      const p = pending.get(m.id);
+      if (!p) return;
+      pending.delete(m.id);
+      if (m.type === "error") p.reject(new Error(m.text));
+      else p.resolve(m);
+    }
+  };
+
+  function setStatus(text, cls) {
+    $("status").textContent = text;
+    $("dot").className = "dot " + (cls || "");
+  }
+  function refreshRun() {
+    runBtn.disabled = !ready || !current || busy;
+    runBtn.textContent = !ready ? "Waiting for Python…" : busy ? "Checking…" : current ? "Check it" : "Add a CSV first";
+  }
+  refreshRun();
+
+  // ---------- ledger (this browser only) ----------
+  const LKEY = "tokio-terminal-ledger";
+  let ledger = [];
+  try { ledger = JSON.parse(localStorage.getItem(LKEY) || "[]"); } catch (e) { ledger = []; }
+  function saveLedger() { try { localStorage.setItem(LKEY, JSON.stringify(ledger)); } catch (e) {} }
+  function drawLedger() {
+    $("ledgerChecks").textContent = ledger.length;
+    $("ledgerVariants").textContent = ledger.reduce((a, b) => a + b.n, 0);
+    const list = $("ledgerList");
+    list.replaceChildren(...ledger.slice().reverse().map(e => {
+      const d = document.createElement("div");
+      const a = document.createElement("span"); a.textContent = e.name;
+      const b = document.createElement("span"); b.textContent = e.n + " · " + (e.sig ? "pass" : "fail");
+      if (e.sig) b.className = "good";
+      d.append(a, b);
+      return d;
+    }));
+  }
+  drawLedger();
+  $("resetLedger").addEventListener("click", () => {
+    if (!ledger.length) return;
+    if (!confirm("Reset the session ledger? Earlier checks will stop counting against new ones.")) return;
+    ledger = []; saveLedger(); drawLedger();
+  });
+
+  // ---------- inputs ----------
+  function setFile(name, text, sample = false) {
+    current = {name, text, sample};
+    const fn = $("fileName");
+    fn.hidden = false;
+    fn.textContent = name + " · " + (text.split(/\r?\n/).length - 1) + " rows";
+    refreshRun();
+  }
+  const drop = $("drop"), fileInput = $("file");
+  drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
+  ["dragenter", "dragover"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) readFile(f); });
+  fileInput.addEventListener("change", () => { const f = fileInput.files[0]; if (f) readFile(f); });
+  function readFile(f) {
+    if (f.size > 25e6) { showError("That file is over 25 MB. Trim it to the returns columns and try again."); return; }
+    const r = new FileReader();
+    r.onload = () => setFile(f.name, String(r.result));
+    r.readAsText(f);
+  }
+  document.querySelectorAll("[data-sample]").forEach(b => b.addEventListener("click", async () => {
+    if (!ready) { setStatus("Still loading Python… the sample will run when it's ready", "busy"); }
+    try {
+      const m = await call({type: "sample", name: b.dataset.sample});
+      setFile("sample: " + b.querySelector("b").textContent, m.text, true);
+      $("kind").value = "returns";
+      runCheck();
+    } catch (e) { showError(e.message); }
+  }));
+  runBtn.addEventListener("click", runCheck);
+
+  async function runCheck() {
+    if (!current || busy) return;
+    busy = true; refreshRun(); setStatus("Checking…", "busy");
+    const trials = parseInt($("trials").value, 10);
+    const ppy = parseFloat($("ppy").value);
+    const prior = current.sample ? 0 : ledger.reduce((a, b) => a + b.n, 0);
+    try {
+      const m = await call({type: "run", text: current.text, kind: $("kind").value,
+        trials: Number.isFinite(trials) && trials > 0 ? trials : null,
+        ppy: Number.isFinite(ppy) && ppy > 0 ? ppy : null, prior});
+      const r = JSON.parse(m.json);
+      if (!current.sample) { ledger.push({name: current.name, n: r.n_variants, sig: r.significant}); saveLedger(); drawLedger(); }
+      render(r);
+      setStatus("Ready · tokio-ai " + r.version, "ready");
+    } catch (e) {
+      showError(cleanError(e.message));
+      setStatus("Ready", "ready");
+    } finally {
+      busy = false; refreshRun();
+    }
+  }
+  function cleanError(s) {
+    const lines = String(s).trim().split("\n");
+    const last = lines.reverse().find(l => /Error|Exception/.test(l)) || lines[0];
+    return last.replace(/^\s*\w+(Error|Exception):\s*/, "");
+  }
+
+  // ---------- rendering ----------
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "class") n.className = v; else if (k === "text") n.textContent = v; else n.setAttribute(k, v);
+    }
+    kids.flat().forEach(k => k != null && n.append(k));
+    return n;
+  };
+  const fmtP = (p) => p == null ? "—" : p < 0.0001 ? "<.0001" : ("p " + p.toFixed(p < 0.01 ? 4 : 3).replace(/^0/, ""));
+  const fmt = (x, d = 2) => x == null ? "—" : Number(x).toFixed(d);
+
+  function showError(msg) {
+    out.replaceChildren(el("div", {class: "error", role: "alert", text: msg}),
+      el("p", {class: "hint", text: "Expected: a CSV with an optional date column first, then one numeric column per variant (returns like 0.004, or equity values). TradingView: Strategy Tester → List of trades → Export."}));
+  }
+
+  function render(r) {
+    const sig = r.significant;
+    const head = el("div", {class: "verdict-top"},
+      el("h2", {class: sig ? "good" : "accent", text: !r.reportable ? "Not reportable" : sig ? "Holds up" : "Not significant"}),
+      el("span", {class: "label", text: r.n_variants > 1 || r.trials > 1 ? `best of ${r.trials} variant${r.trials > 1 ? "s" : ""} · ${r.best}` : r.best}));
+
+    const pv = el("div", {class: "pvals"});
+    if (r.trials > 1) {
+      pv.append(el("div", {}, el("span", {class: "label", text: "Best alone"}), el("span", {class: "big struck", text: fmtP(r.p_alone)})),
+                el("span", {class: "arrow", "aria-hidden": "true", text: "→"}),
+                el("div", {}, el("span", {class: "label", text: `With the other ${r.trials - 1}`}), el("span", {class: "big " + (sig ? "good" : "accent"), text: fmtP(r.p_value)})));
+    } else {
+      pv.append(el("div", {}, el("span", {class: "label", text: "p-value, allowing for dependence"}), el("span", {class: "big " + (sig ? "good" : "accent"), text: fmtP(r.p_value)})),
+                el("div", {}, el("span", {class: "label", text: "Plain t-test would say"}), el("span", {class: "mono", style: "font-size:20px;color:var(--muted)", text: fmtP(r.p_naive)})));
+    }
+    let leadText;
+    if (!r.reportable) leadText = "Too little data, or too few independent observations, to say anything either way.";
+    else if (sig) leadText = `The best variant's return is unlikely to be luck at the ${Math.round(r.alpha * 100)}% level, even after counting every variant in this file${r.trials > r.n_variants ? " and the earlier ones in your ledger" : ""}. It would still pass as the best of about ${r.survives > 1e6 ? "a million" : r.survives} independent tries.`;
+    else if (r.p_alone != null && r.p_alone <= r.alpha) leadText = `Alone it looks real. But it was picked from ${r.trials}, and the best of that many no-edge strategies looks this good often enough that it's not evidence. It would only pass as the best of ${r.survives} tr${r.survives === 1 ? "y" : "ies"}.`;
+    else leadText = "The return isn't distinguishable from zero once serial dependence is allowed for.";
+
+    const stats = el("div", {class: "stats"},
+      stat("Sharpe (annual)", fmt(r.sharpe), r.years ? `${r.n_bars} ${r.bar_unit} · ${r.years} yr` : `${r.n_bars} ${r.bar_unit}`),
+      stat("Haircut Sharpe", fmt(r.haircut), "after the trials"),
+      stat("Deflated Sharpe", fmt(r.dsr, 2), "0.95 passes"),
+      stat("Prob. of overfitting", r.pbo == null ? "—" : fmt(r.pbo, 2), r.pbo == null ? "needs 2+ variants" : "0.5 = coin flip"),
+      stat("Variants counted", String(r.trials), r.trials > r.n_variants ? `${r.n_variants} here + ledger` : "in this file"));
+
+    const verdict = el("div", {class: "verdict"}, head, pv, el("p", {class: "lead", text: leadText}), stats);
+
+    // table
+    const tbody = el("tbody");
+    r.rows.slice(0, 60).forEach((row, i) => tbody.append(el("tr", {class: i === 0 ? "best" : ""},
+      el("td", {text: row.name}), el("td", {text: fmt(row.sharpe)}), el("td", {text: fmt(row.p_alone, 4)}),
+      el("td", {text: fmt(row.p_adj, 4)}), el("td", {text: fmt(row.haircut)}),
+      el("td", {class: row.sig ? "good" : "", text: row.sig ? "pass" : "fail"}))));
+    const table = el("div", {class: "panel"}, el("h3", {text: "Variants"}),
+      el("div", {class: "table-wrap"}, el("table", {},
+        el("thead", {}, el("tr", {}, ...["variant", "Sharpe", "p alone", "p adj", "haircut", ""].map(h => el("th", {text: h})))), tbody)));
+
+    const chartPanel = el("div", {class: "panel"}, el("h3", {text: "Cumulative return"}), drawChart(r.chart, r.best),
+      el("span", {class: "label", text: "best variant in orange · others in grey"}));
+
+    const notes = (r.notes || []).filter(Boolean);
+    const notesPanel = notes.length ? el("div", {class: "panel"}, el("h3", {text: "Notes"}), el("ul", {class: "notes"}, notes.map(n => el("li", {text: n})))) : null;
+
+    const report = el("details", {}, el("summary", {class: "label", text: "Full report (same text as the Python library)"}), el("pre", {text: r.report}));
+    out.replaceChildren(verdict, el("div", {class: "grid2"}, chartPanel, table), notesPanel, report);
+    out.scrollTop = 0;
+  }
+  function stat(label, value, sub) {
+    return el("div", {}, el("span", {class: "label", text: label}), el("span", {text: value}), sub ? el("small", {text: sub}) : null);
+  }
+  function drawChart(series, best) {
+    const W = 640, H = 300, P = 8;
+    const names = Object.keys(series);
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("class", "chart");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Cumulative return of each variant");
+    let lo = Infinity, hi = -Infinity, len = 0;
+    names.forEach(n => series[n].forEach(v => { if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }));
+    names.forEach(n => len = Math.max(len, series[n].length));
+    if (!isFinite(lo) || len < 2) return svg;
+    if (hi === lo) { hi += 1e-6; lo -= 1e-6; }
+    const x = (i) => P + (i / (len - 1)) * (W - 2 * P);
+    const y = (v) => P + (1 - (v - lo) / (hi - lo)) * (H - 2 * P);
+    if (lo < 0 && hi > 0) {
+      const z = document.createElementNS(NS, "line");
+      z.setAttribute("x1", P); z.setAttribute("x2", W - P); z.setAttribute("y1", y(0)); z.setAttribute("y2", y(0));
+      z.setAttribute("stroke", "#3a3b40"); z.setAttribute("stroke-dasharray", "3 4");
+      svg.append(z);
+    }
+    const order = names.filter(n => n !== best).concat(names.includes(best) ? [best] : []);
+    order.forEach(n => {
+      const pts = series[n].map((v, i) => v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`).filter(Boolean).join(" ");
+      const pl = document.createElementNS(NS, "polyline");
+      pl.setAttribute("points", pts);
+      pl.setAttribute("fill", "none");
+      pl.setAttribute("stroke", n === best ? "var(--accent)" : "#4a4b52");
+      pl.setAttribute("stroke-width", n === best ? "2" : "1");
+      pl.setAttribute("stroke-linejoin", "round");
+      const t = document.createElementNS(NS, "title"); t.textContent = n;
+      pl.append(t);
+      svg.append(pl);
+    });
+    return svg;
+  }
+})();
+</script>
+</body>
+</html>
