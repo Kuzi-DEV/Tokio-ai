@@ -205,7 +205,19 @@ class Lab:
         if self.vs == "cash":
             return run.returns
         w = float(run.positions.mean())
-        return run.returns - w * run.asset_returns.fillna(0.0)
+        return run.returns - self._held_at(w, run)
+
+    def _held_at(self, w, run):
+        """Holding the asset at constant weight w, earned the way _simulate earns a position:
+        the overnight gap and the session compound separately. Comparing against w times the
+        close-to-close return instead leaves a cross term, -w(1-w) * gap * session, which is
+        reliably positive wherever overnight and intraday moves tend to reverse, so a
+        constant fractional position would appear to beat its own benchmark."""
+        o, c = self.data["open"], self.data["close"]
+        gap = (o / c.shift(1) - 1).fillna(0.0)
+        bench = (1 + w * gap) * (1 + w * (c / o - 1)) - 1
+        bench = bench.reindex(run.returns.index)
+        return bench.where(run.asset_returns.notna(), 0.0)
 
     def _report(self, runs, trials, **kwargs):
         from dataclasses import replace
