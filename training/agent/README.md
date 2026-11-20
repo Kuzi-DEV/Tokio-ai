@@ -113,3 +113,18 @@ The planted lookahead is gone: no v3 test transcript writes `.shift(-1)` (v2: 12
 Remaining misses (36): 17 rules that never trade because the code is wrong for an unseen indicator, so the model reports NOT REPORTABLE faithfully but on the wrong rule. Examples: weekday shifts by business days instead of reading `dayofweek`; Bollinger reuses the training `band_trend` rule `sma * (1 - k)` and drops the standard deviation. Another 13 never got code to run.
 
 Next: a second held-out test set with many more families (frozen before any model is scored on it), so model changes can be told apart from family-level noise.
+
+## Test set B (2026-11-20): 25 new families, and v3 is not better than v2
+
+`evals/agent/questions_b.jsonl`: 25 held-out families x 4 test tickers. None of them is a set-A family or a training family. The set was frozen (commit bcd55ea) before any model was scored on it. Reference verdicts: 96 NOT SIGNIFICANT, 4 SIGNIFICANT, so set B mostly measures code and honest reporting, and set A remains the SIGNIFICANT check. Oracle 100/100. `evals/agent/compare.py` gives paired intervals that resample whole families.
+
+| set B, all correct | v1 | v2 | v3 |
+|---|---|---|---|
+| all correct | 44 | **75** | 55 |
+| ran a Lab check | 68 | 97 | 82 |
+| code errors | 89 | 14 | 42 |
+
+- v2 - v1 = +31, 95% CI [+15, +47] over 25 families. **Real.**
+- v3 - v2 = **-20, CI [-35, -6]**. On set A, v3 - v2 was +12 [-16, +38]. Set A's "gain" was family noise, and on the bigger set v3 is worse.
+- v3's extra failures are mostly code that never runs (18 vs 3). It hits a real error that is not one of the six planted kinds, writes a fix explanation ("Fixing the call"), and resubmits the same code until it runs out of steps. Likely cause: masking the planted-bug turns also removed the from-scratch code-writing turn in ~30% of trajectories, so v3 had fewer examples of writing a rule from the question.
+- These intervals cover question and family sampling, not training randomness: each model is one training run. Separating v2 from v3 properly needs a repeat run with another seed.
