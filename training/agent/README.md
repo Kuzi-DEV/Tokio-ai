@@ -128,3 +128,18 @@ Next: a second held-out test set with many more families (frozen before any mode
 - v3 - v2 = **-20, CI [-35, -6]**. On set A, v3 - v2 was +12 [-16, +38]. Set A's "gain" was family noise, and on the bigger set v3 is worse.
 - v3's extra failures are mostly code that never runs (18 vs 3). It hits a real error that is not one of the six planted kinds, writes a fix explanation ("Fixing the call"), and resubmits the same code until it runs out of steps. Likely cause: masking the planted-bug turns also removed the from-scratch code-writing turn in ~30% of trajectories, so v3 had fewer examples of writing a rule from the question.
 - These intervals cover question and family sampling, not training randomness: each model is one training run. Separating v2 from v3 properly needs a repeat run with another seed.
+
+## Seed repeat (2026-11-20): training noise is as large as every effect we measured
+
+v2 retrained with the same data and settings, changing only `--seed 1` (v2 used 0). Dev loss was the same: 0.041 vs 0.042.
+
+| all correct | v2 seed 0 | v2 seed 1 | v3 seed 0 |
+|---|---|---|---|
+| set A (9 families) | 52 | **73** | 64 |
+| set B (25 families) | **75** | 52 | 55 |
+
+- Same recipe: seed 1 is +21 on set A and -23 on set B. On set B the family-bootstrap interval for seed 1 minus seed 0 is [-40, -6], as "significant" as v3's -20. The two runs agree on only 57 (A) and 61 (B) of the 100 questions.
+- So the family-bootstrap interval covers which questions were asked, **not which training run you got**, and the training-run spread is about ±20 points. **v3 vs v2 is undetermined.** Its -20 on set B is the size of seed noise. v1 vs v2 rests on one v1 run too.
+- What stands: every fine-tune scores far above the base model's 0/100 on set A. The recipe-level averages so far are v2 62.5 (A) / 63.5 (B) over two seeds, and v3 64 / 55 over one.
+
+Protocol from here: a recipe is judged on the mean over at least 3 training seeds, on both sets. A single run is never compared with another single run. Lowering the run-to-run spread is itself worth a recipe change: the model ends at dev loss 0.04, near-memorized, which is a brittle regime.
