@@ -188,3 +188,34 @@ def test_best_of_a_single_run():
     run = lab.run(sma_cross, fast=10, slow=50)
     assert lab.best() is run
     assert lab.final_test(lab.best()).segment == "holdout"
+
+
+def test_constant_fractional_position_does_not_beat_its_own_benchmark():
+    # Overnight and intraday moves that reverse used to make a constant 50% position look
+    # like it beat "holding at the same exposure" (a compounding cross term).
+    import numpy as np
+    d = _bars(3000).copy()
+    rng = np.random.default_rng(0)
+    gap = rng.normal(0, 0.01, len(d))
+    d["open"] = d["close"].shift(1).fillna(d["close"].iloc[0]) * (1 + gap)
+    d["close"] = d["open"] * (1 - 0.5 * gap + rng.normal(0, 0.01, len(d)))
+    d["high"] = d[["open", "close"]].max(axis=1)
+    d["low"] = d[["open", "close"]].min(axis=1)
+    lab = Lab(d, holdout=0, vs="market")
+    run = lab.run(lambda x, w: x.close * 0 + w, w=0.5)
+    excess = lab._tested(run)
+    assert abs(excess.iloc[2:]).max() < 1e-5  # only the tiny gap from mean exposure 0.4998 vs 0.5
+
+
+def test_lookahead_in_a_sparse_signal_is_caught():
+    # On ~5% of bars: random cut points alone often missed the shift(-1).
+    import pytest
+    from tokio_ai import LookaheadError
+
+    def sparse(d, k):
+        down = (d.close.diff() < 0).astype(int)
+        return (down.rolling(k).sum() == k).astype(float).shift(-1).fillna(0.0)
+
+    for k in (3, 4, 5):
+        with pytest.raises(LookaheadError):
+            Lab(_bars(2000), holdout=0.25, vs="market").run(sparse, k=k)

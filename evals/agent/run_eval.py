@@ -97,10 +97,11 @@ def reported_verdict(text: str) -> str | None:
     return min(hits)[2] if hits else None
 
 
-def run_one(shim, item, model, key, log):
+def run_one(shim, item, model, key, log, local=None):
     shim["reset_agent"]()
     messages = [{"role": "system", "content": common.system_prompt()}, {"role": "user", "content": item["question"]}]
     final, steps, errors, t0 = "", 0, 0, time.time()
+    last_sig, repeats = None, 0
     script = oracle(item) if model == "oracle" else None
     for step in range(MAX_STEPS):
         steps += 1
@@ -110,8 +111,13 @@ def run_one(shim, item, model, key, log):
                 L0 = shim["LABS"].get(item["symbol"].upper())
                 msg = {"content": f"**{L0.check().verdict}**" if L0 is not None and L0.runs else "no result"}
         else:
-            msg = chat(model, messages, key)["choices"][0]["message"]
+            msg = (local.chat(messages, common.TOOLS) if local is not None else chat(model, messages, key))["choices"][0]["message"]
         calls = msg.get("tool_calls") or []
+        sig = json.dumps([(c["function"]["name"], c["function"].get("arguments")) for c in calls])
+        repeats = repeats + 1 if calls and sig == last_sig else 0
+        last_sig = sig
+        if repeats >= 2:  # the same call three times in a row: the model is stuck, stop here (same rule for every model)
+            break
         entry = {"role": "assistant", "content": msg.get("content") or ""}
         if calls:
             entry["tool_calls"] = calls
@@ -175,9 +181,16 @@ def main():
     ap.add_argument("--model", required=True)
     ap.add_argument("--limit", type=int, default=100)
     ap.add_argument("--ids", default="", help="comma-separated question ids")
+    ap.add_argument("--backend", choices=["openrouter", "hf"], default="openrouter")
+    ap.add_argument("--adapter", default=None, help="LoRA adapter dir (hf backend)")
+    ap.add_argument("--tag", default=None, help="results file name (default: from --model)")
     args = ap.parse_args()
     key = os.environ.get("OPENROUTER_API_KEY")
-    if not key and args.model != "oracle":
+    local = None
+    if args.backend == "hf":
+        from local_model import LocalModel
+        local = LocalModel(args.model, adapter=args.adapter)
+    elif not key and args.model != "oracle":
         sys.exit("set OPENROUTER_API_KEY")
     items = [json.loads(line) for line in (common.HERE / "questions.jsonl").read_text(encoding="utf-8").splitlines()]
     if args.ids:
@@ -185,14 +198,14 @@ def main():
         items = [i for i in items if i["id"] in want]
     items = items[: args.limit]
     shim = common.load_shim()
-    tag = re.sub(r"[^A-Za-z0-9.-]+", "_", args.model)
+    tag = args.tag or re.sub(r"[^A-Za-z0-9.-]+", "_", args.model + (f"+{Path(args.adapter).name}" if args.adapter else ""))
     outdir = common.HERE / "results"
     outdir.mkdir(exist_ok=True)
     recs = []
     with (outdir / f"{tag}.jsonl").open("w", encoding="utf-8") as fh, (outdir / f"{tag}.transcripts.jsonl").open("w", encoding="utf-8") as log:
         for item in items:
             try:
-                rec = run_one(shim, item, args.model, key, log)
+                rec = run_one(shim, item, args.model, key, log, local)
             except Exception as e:
                 rec = {"id": item["id"], "family": item["family"], "symbol": item["symbol"], "ref_verdict": item["reference"]["verdict"],
                        "ref_n": item["reference"]["n_variants"], "steps": 0, "errors": 1, "fatal": str(e)[:300],

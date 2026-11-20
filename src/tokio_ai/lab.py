@@ -205,7 +205,19 @@ class Lab:
         if self.vs == "cash":
             return run.returns
         w = float(run.positions.mean())
-        return run.returns - w * run.asset_returns.fillna(0.0)
+        return run.returns - self._held_at(w, run)
+
+    def _held_at(self, w, run):
+        """Holding the asset at constant weight w, earned the way _simulate earns a position:
+        the overnight gap and the session compound separately. Comparing against w times the
+        close-to-close return instead leaves a cross term, -w(1-w) * gap * session, which is
+        reliably positive wherever overnight and intraday moves tend to reverse, so a
+        constant fractional position would appear to beat its own benchmark."""
+        o, c = self.data["open"], self.data["close"]
+        gap = (o / c.shift(1) - 1).fillna(0.0)
+        bench = (1 + w * gap) * (1 + w * (c / o - 1)) - 1
+        bench = bench.reindex(run.returns.index)
+        return bench.where(run.asset_returns.notna(), 0.0)
 
     def _report(self, runs, trials, **kwargs):
         from dataclasses import replace
@@ -299,8 +311,14 @@ def _assert_no_lookahead(pd, signal, d, params, pos, name, cuts: int = LOOKAHEAD
     # deterministic cut points, spread across the sample
     seed = int(hashlib.sha1(f"{name}{sorted(params.items())}".encode()).hexdigest()[:8], 16)
     rng = np.random.default_rng(seed)
-    points = sorted(set(rng.integers(lo, n - 1, size=cuts).tolist()) | {n - 2})
     full = pos.to_numpy(dtype=float)
+    # Random cuts, plus cuts at bars where the position changes: a signal that peeks at the
+    # next bar moves one bar early, which only shows when the data stops right there. Random
+    # cuts alone miss sparse signals (on 10% of days, a shift(-1) slipped past ~40% of the time).
+    changes = np.flatnonzero(np.diff(np.nan_to_num(full)) != 0) + 1
+    changes = changes[(changes >= lo) & (changes <= n - 2)]
+    at_changes = rng.choice(changes, size=min(cuts, len(changes)), replace=False).tolist() if len(changes) else []
+    points = sorted(set(rng.integers(lo, n - 1, size=cuts).tolist()) | {n - 2} | set(at_changes))
     for cut in points:
         part = _positions(pd, signal, d.iloc[: cut + 1], params, name).to_numpy(dtype=float)
         a, b = full[: cut + 1], part
