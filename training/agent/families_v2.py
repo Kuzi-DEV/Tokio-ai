@@ -152,7 +152,12 @@ fam("new_high_hold", [
     pos = pd.Series(0.0, index=d.index)
     for lag in range(hold):
         pos = np.maximum(pos, hit.shift(lag, fill_value=False).astype(float))
-    return pos'''],
+    return pos''',
+    '''def {fn}(d, n, hold):
+    # a new n-day high = above the prior n-1 closes; shift(1) keeps today out of its own window
+    prior_high = d.close.rolling(n - 1).max().shift(1)
+    trigger = d.close > prior_high
+    return trigger.astype(float).rolling(hold, min_periods=1).max().fillna(0.0)'''],
     [{"n": [50, 252], "hold": [5, 20]}, {"n": [100], "hold": [10]}, {"n": [252], "hold": [20, 60]}],
     ["When {sym} makes a new {n}-day closing high, buy and hold for {hold} days. Test each combination.",
      "Do new {n}-day highs in {sym} keep going? Long for {hold} trading days after each one."])
@@ -320,7 +325,12 @@ fam("atr_filter", [
 fam("narrow_range", [
     '''def {fn}(d, n):
     rng = d.high - d.low
-    return (rng == rng.rolling(n).min()).astype(float)'''],
+    return (rng == rng.rolling(n).min()).astype(float)''',
+    '''def {fn}(d, n):
+    rng = d.high - d.low
+    # narrower than each of the prior n-1 days (shift(1): today isn't compared with itself)
+    prior_min = rng.rolling(n - 1).min().shift(1)
+    return (rng < prior_min).astype(float)'''],
     [{"n": [4, 7]}, {"n": [7]}, {"n": [5, 7, 10]}],
     ["NR{n} setup on {sym}: when today's high-low range is the narrowest of the last {n} days, go long the next day. Test each n.",
      "Narrowest-range-in-{n}-days days on {sym}: is the next day better than average?"])

@@ -32,9 +32,12 @@ def examples(tok, path, max_len):
     out, skipped = [], 0
     for line in Path(path).read_text(encoding="utf-8").splitlines():
         rec = json.loads(line)
-        msgs, tools = rec["messages"], rec["tools"]
+        tools = rec["tools"]
+        # "train": False marks a planted buggy turn: kept as context, never a target
+        keep = [m.get("train", True) for m in rec["messages"]]
+        msgs = [{k: v for k, v in m.items() if k != "train"} for m in rec["messages"]]
         for i, m in enumerate(msgs):
-            if m["role"] != "assistant":
+            if m["role"] != "assistant" or not keep[i]:
                 continue
             prompt = render(tok, msgs[:i], tools, True)
             full = render(tok, msgs[: i + 1], tools, False)
