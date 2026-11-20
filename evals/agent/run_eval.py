@@ -57,11 +57,12 @@ def chat(model, messages, key, retries=4):
 
 def oracle(item):
     """A scripted 'model' that answers with the reference code: checks the scorer, costs nothing."""
+    import importlib
     import inspect
-    import families as F
+    F = importlib.import_module(SETS[ARGS_SET][1])
     spec = F.FAMILIES[item["family"]]
     src = inspect.getsource(spec["signal"])
-    helpers = "".join(inspect.getsource(h) for h in (F._rsi, F._next_bday))
+    helpers = "".join(inspect.getsource(h) for k, h in vars(F).items() if k.startswith("_") and inspect.isfunction(h))
     grid = ", ".join(f"{k}={v!r}" for k, v in item["grid"].items())
     fixed = ", ".join(f"{k}={v!r}" for k, v in item["fixed"].items())
     sym = item["symbol"]
@@ -83,6 +84,10 @@ def oracle(item):
 _VERDICTS = [("NOT REPORTABLE", r"NOT\s+REPORTABLE"),
              ("NOT SIGNIFICANT", r"NOT\s+(?:STATISTICALLY\s+)?SIGNIFICANT|ISN'T\s+(?:STATISTICALLY\s+)?SIGNIFICANT|NO\s+SIGNIFICANT"),
              ("SIGNIFICANT", r"\bSIGNIFICANT\b")]
+
+
+SETS = {"a": ("questions.jsonl", "families", ""), "b": ("questions_b.jsonl", "families_b", "-setb")}
+ARGS_SET = "a"
 
 
 def reported_verdict(text: str) -> str | None:
@@ -184,7 +189,10 @@ def main():
     ap.add_argument("--backend", choices=["openrouter", "hf"], default="openrouter")
     ap.add_argument("--adapter", default=None, help="LoRA adapter dir (hf backend)")
     ap.add_argument("--tag", default=None, help="results file name (default: from --model)")
+    ap.add_argument("--set", choices=sorted(SETS), default="a", help="a: questions.jsonl (9 families), b: questions_b.jsonl (25)")
     args = ap.parse_args()
+    global ARGS_SET
+    ARGS_SET = args.set
     key = os.environ.get("OPENROUTER_API_KEY")
     local = None
     if args.backend == "hf":
@@ -192,13 +200,14 @@ def main():
         local = LocalModel(args.model, adapter=args.adapter)
     elif not key and args.model != "oracle":
         sys.exit("set OPENROUTER_API_KEY")
-    items = [json.loads(line) for line in (common.HERE / "questions.jsonl").read_text(encoding="utf-8").splitlines()]
+    items = [json.loads(line) for line in (common.HERE / SETS[args.set][0]).read_text(encoding="utf-8").splitlines()]
     if args.ids:
         want = set(args.ids.split(","))
         items = [i for i in items if i["id"] in want]
     items = items[: args.limit]
     shim = common.load_shim()
     tag = args.tag or re.sub(r"[^A-Za-z0-9.-]+", "_", args.model + (f"+{Path(args.adapter).name}" if args.adapter else ""))
+    tag += SETS[args.set][2]
     outdir = common.HERE / "results"
     outdir.mkdir(exist_ok=True)
     recs = []
