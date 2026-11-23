@@ -154,6 +154,6 @@ Same v2 data, half the learning rate (1e-4), plus an exponential moving average 
 | lr 1e-4, final weights | 30 / 47 (38.5) | 71 | 57 / 73 (65.0) | 72 |
 | lr 1e-4, EMA weights | 39 / 46 (42.5) | 75 | 59 / 75 (67.0) | 70 |
 
-The seeds agree more (about +12 questions), but the lower learning rate costs about 20 points on set A: the model under-learns the code (set A code errors 54-99 vs 20-27) and finds only 4-6 of 14 SIGNIFICANT verdicts. Not adopted. On set A the EMA copy beat the final weights at the same seed (+9, -1) and shrank the seed gap (7 vs 17); on set B it made no difference. Two seeds are one sample of the gap, so this is a hint, not a result.
+The seeds agree more (about +12 questions), but the lower learning rate costs about 20 points on set A: the model under-learns the code (set A code errors 54-99 vs 27-32 for the two v2 seeds) and finds only 4-6 of 14 SIGNIFICANT verdicts. Not adopted. On set A the EMA copy beat the final weights at the same seed (+9, -1) and shrank the seed gap (7 vs 17); on set B it made no difference. Two seeds are one sample of the gap, so this is a hint, not a result.
 
 Next: EMA alone at the original learning rate, seeds 2 and 3. Each run also gives two more plain v2 seeds, so the v2 mean will rest on four runs.
