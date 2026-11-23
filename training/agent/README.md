@@ -143,3 +143,17 @@ v2 retrained with the same data and settings, changing only `--seed 1` (v2 used 
 - What stands: every fine-tune scores far above the base model's 0/100 on set A. The recipe-level averages so far are v2 62.5 (A) / 63.5 (B) over two seeds, and v3 64 / 55 over one.
 
 Protocol from here: a recipe is judged on the mean over at least 3 training seeds, on both sets. A single run is never compared with another single run. Lowering the run-to-run spread is itself worth a recipe change: the model ends at dev loss 0.04, near-memorized, which is a brittle regime.
+
+## Lower-noise recipe, first try (2026-11-23)
+
+Same v2 data, half the learning rate (1e-4), plus an exponential moving average of the adapter weights (`--ema 0.99`, saved as a second adapter). Two seeds. "Agree" counts the questions where both seeds got the same all_ok outcome.
+
+| recipe | set A s0 / s1 (mean) | set A agree | set B s0 / s1 (mean) | set B agree |
+|---|---|---|---|---|
+| v2, lr 2e-4 | 52 / 73 (62.5) | 57 | 75 / 52 (63.5) | 61 |
+| lr 1e-4, final weights | 30 / 47 (38.5) | 71 | 57 / 73 (65.0) | 72 |
+| lr 1e-4, EMA weights | 39 / 46 (42.5) | 75 | 59 / 75 (67.0) | 70 |
+
+The seeds agree more (about +12 questions), but the lower learning rate costs about 20 points on set A: the model under-learns the code (set A code errors 54-99 vs 20-27) and finds only 4-6 of 14 SIGNIFICANT verdicts. Not adopted. On set A the EMA copy beat the final weights at the same seed (+9, -1) and shrank the seed gap (7 vs 17); on set B it made no difference. Two seeds are one sample of the gap, so this is a hint, not a result.
+
+Next: EMA alone at the original learning rate, seeds 2 and 3. Each run also gives two more plain v2 seeds, so the v2 mean will rest on four runs.
