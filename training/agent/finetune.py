@@ -73,6 +73,9 @@ def main():
     ap.add_argument("--out", default=str(HERE / "out" / "lora"))
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--data", default=str(HERE / "data"), help="folder with train.jsonl and dev.jsonl")
+    ap.add_argument("--ema", type=float, default=0.0,
+                    help="also keep an exponential moving average of the adapter weights (decay per optimizer "
+                         "step, e.g. 0.99) and save it to <out>-ema; 0 = off")
     args = ap.parse_args()
 
     from peft import LoraConfig, get_peft_model
@@ -102,7 +105,9 @@ def main():
     head = model.base_model.model.lm_head
     device = next(model.parameters()).device
 
-    opt = bnb.optim.PagedAdamW8bit([p for p in model.parameters() if p.requires_grad], lr=args.lr, weight_decay=0.0)
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    opt = bnb.optim.PagedAdamW8bit(trainable, lr=args.lr, weight_decay=0.0)
+    ema = [p.detach().float().clone() for p in trainable] if args.ema else None
     total_steps = math.ceil(len(train) * args.epochs / args.accum)
     warm = max(1, total_steps // 20)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / warm) * 0.5 * (1 + math.cos(math.pi * min(1.0, s / total_steps))))
@@ -138,6 +143,10 @@ def main():
             sched.step()
             opt.zero_grad(set_to_none=True)
             step += 1
+            if ema is not None:
+                with torch.no_grad():
+                    for e_, p_ in zip(ema, trainable):
+                        e_.mul_(args.ema).add_(p_.detach().float(), alpha=1 - args.ema)
             if step % 10 == 0:
                 el = time.time() - t0
                 print(f"step {step}/{total_steps} loss {run_loss / run_tok:.4f} lr {sched.get_last_lr()[0]:.2e} "
@@ -151,6 +160,14 @@ def main():
     model.save_pretrained(args.out)
     tok.save_pretrained(args.out)
     print("saved", args.out, flush=True)
+    if ema is not None:
+        with torch.no_grad():
+            for e_, p_ in zip(ema, trainable):
+                p_.copy_(e_.to(p_.dtype))
+        print(f"EMA({args.ema}) dev loss: {dev_loss():.4f}", flush=True)
+        model.save_pretrained(args.out + "-ema")
+        tok.save_pretrained(args.out + "-ema")
+        print("saved", args.out + "-ema", flush=True)
 
 
 if __name__ == "__main__":
