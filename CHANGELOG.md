@@ -1,6 +1,28 @@
 # Changelog
 
-## 0.7.0 — unreleased
+## 0.7.1 — 2026-11-25
+
+Fixes found while building a Lab-verified training set for a small agent model.
+If you used `Lab(vs="market")` with positions that aren't all 0 or 1, re-run it:
+the numbers change.
+
+- **`Lab(vs="market")` compares against the right benchmark.** It now holds
+  the asset at the strategy's average weight in the same simulator (the
+  overnight gap and the session compound separately, as a position does).
+  Before, it subtracted weight x close-to-close return, which leaves a cross
+  term that is reliably positive wherever overnight and intraday moves tend
+  to reverse, so a constant fractional position could appear to beat its
+  own benchmark.
+- **The lookahead check also cuts the data where the position changes.** A
+  signal that peeks one bar ahead moves one bar early, which shows only when
+  the data stops right there. Random cuts alone let a `shift(-1)` on a sparse
+  signal (in the market 10% of days) slip past about 40% of the time.
+- **NOT REPORTABLE says why.** When the returns never vary (the strategy never
+  trades, or exactly matches its benchmark), the message says that instead of
+  claiming there were too few bars.
+- `Lab.best()` works when only one variant was run.
+
+## 0.7.0 — 2026-10-15
 
 - **`tokio_ai.vol_surface(symbol)`: a 3D implied-volatility surface from free
   data.** Downloads Cboe's delayed option chain (no key) and computes every

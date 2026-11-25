@@ -50,6 +50,13 @@ backtest did worse than picking at random: the in-sample winner finished at
 or below the median out of sample in 90% of splits.
 ```
 
+**[Try it in your browser, nothing to install →](https://kuzi-dev.github.io/Tokio-ai/terminal/)**
+The [web terminal](https://kuzi-dev.github.io/Tokio-ai/terminal/) runs this
+library in the page (Pyodide): load a ticker, write a signal, and get the same
+verdict, lookahead check included. Its research agent can chat with your own
+[OpenRouter](https://openrouter.ai) key, which goes straight from your browser
+to OpenRouter and is saved only if you tick "remember".
+
 **[Run it yourself in Colab, then upload your own backtest →](https://colab.research.google.com/github/Kuzi-DEV/Tokio-ai/blob/main/examples/check_your_backtest.ipynb)**
 No API key, no account. There's also a CLI for a CSV export:
 `tokio-ai-backtest pnl.csv --trials 40`.
