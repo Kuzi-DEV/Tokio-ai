@@ -157,3 +157,18 @@ Same v2 data, half the learning rate (1e-4), plus an exponential moving average 
 The seeds agree more (about +12 questions), but the lower learning rate costs about 20 points on set A: the model under-learns the code (set A code errors 54-99 vs 27-32 for the two v2 seeds) and finds only 4-6 of 14 SIGNIFICANT verdicts. Not adopted. On set A the EMA copy beat the final weights at the same seed (+9, -1) and shrank the seed gap (7 vs 17); on set B it made no difference. Two seeds are one sample of the gap, so this is a hint, not a result.
 
 Next: EMA alone at the original learning rate, seeds 2 and 3. Each run also gives two more plain v2 seeds, so the v2 mean will rest on four runs.
+
+## Four v2 seeds, and EMA at the original learning rate (2026-11-25)
+
+Seeds 2 and 3 of the v2 recipe, each also saving an EMA copy (`--ema 0.99`).
+
+| | set A | set B |
+|---|---|---|
+| v2, seeds 0-3 | 52, 73, 69, 60: mean 63.5, SD 9.4 | 75, 52, 71, 57: mean 63.8, SD 11.0 |
+| v2 pairwise agreement (6 pairs) | 57-79, mean 66 | 54-74, mean 63 |
+| EMA copies, seeds 2/3 | 69, 60 | 68, 63 |
+| v3 (one seed) | 64 | 55 |
+
+EMA is null at this learning rate. The cosine schedule already ends near zero, so the averaged weights are almost the final weights: same dev loss, and the same answer as their own final model on 94/94 (A) and 87/82 (B) questions. One v2 run lands within about ±10 points of the recipe mean, so a single run cannot separate two recipes closer than ~20 points. v3's 64/55 sits inside v2's seed range on both sets.
+
+Next: average the four v2 seeds into one adapter (`soup.py`, exact: the average of k rank-16 LoRAs is one rank-16k LoRA). If the averaged model scores at or above the seed mean, the shipped model can be a soup of several seeds instead of one lucky run.
